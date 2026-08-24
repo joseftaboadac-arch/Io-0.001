@@ -1,0 +1,31 @@
+{
+  "name": "bitcoin-money-generator",
+  "version": "1.0.0",
+  "description": "Bitcoin money generator using Dinero.js for precise monetary calculations",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "bitcoin": "node bitcoin.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joseftaboadac-arch/Io-0.001.git"
+  },
+  "keywords": [
+    "bitcoin",
+    "money",
+    "dinero",
+    "currency",
+    "cryptocurrency"
+  ],
+  "author": "joseftaboadac-arch",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/joseftaboadac-arch/Io-0.001/issues"
+  },
+  "homepage": "https://github.com/joseftaboadac-arch/Io-0.001#readme",
+  "dependencies": {
+    "dinero.js": "^2.0.0"
+  }
+}
