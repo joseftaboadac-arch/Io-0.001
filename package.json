@@ -1,31 +1,40 @@
 {
-  "name": "bitcoin-money-generator",
+  "name": "tennis-betting-bot",
   "version": "1.0.0",
-  "description": "Bitcoin money generator using Dinero.js for precise monetary calculations",
-  "main": "index.js",
+  "description": "Bot especializado en apuestas de tenis en piso duro - Analiza todos los tipos de apuestas: Match Winner, Handicap, Over/Under, etc.",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node index.js",
-    "bitcoin": "node bitcoin.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js",
+    "bot": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "sample": "node -e \"const TennisAnalyzer = require('./src/services/TennisAnalyzer'); const analyzer = new TennisAnalyzer(); analyzer.loadSampleData(); console.log('Datos de ejemplo cargados:', analyzer.getAllPlayers().length, 'jugadores,', analyzer.getAllMatches().length, 'partidos');\""
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/joseftaboadac-arch/Io-0.001.git"
   },
   "keywords": [
-    "bitcoin",
-    "money",
-    "dinero",
-    "currency",
-    "cryptocurrency"
+    "tenis",
+    "tennis",
+    "apuestas",
+    "betting",
+    "piso duro",
+    "hard court",
+    "analisis",
+    "predicciones",
+    "bot"
   ],
-  "author": "joseftaboadac-arch",
-  "license": "Apache-2.0",
+  "author": "Tennis Bot Team",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/joseftaboadac-arch/Io-0.001/issues"
   },
   "homepage": "https://github.com/joseftaboadac-arch/Io-0.001#readme",
   "dependencies": {
-    "dinero.js": "^2.0.0"
+    "axios": "^1.6.2",
+    "readline": "^1.3.0"
+  },
+  "optionalDependencies": {
+    "chalk": "^5.3.0"
   }
 }
