@@ -2,6 +2,62 @@
 
 🎾 **Bot de apuestas de tenis especializado en superficie de piso duro**
 
+---
+
+## ⚽ Cerebro Robot de Fútbol (NEW)
+
+Este repositorio incluye también un **Cerebro Robot de Fútbol**: un motor de análisis y predicción que te ayuda a tomar buenas decisiones en apuestas deportivas de fútbol.
+
+### Iniciar el cerebro de fútbol
+
+```bash
+npm run football
+# o
+node src/footballBot.js
+```
+
+### ¿Qué hace el cerebro?
+
+- **Predice el resultado 1X2** (Local / Empate / Visitante) con un modelo ponderado de 6 factores: forma reciente, rendimiento local/visitante, fuerza ataque-defensa, head-to-head, posición en liga y goles esperados (xG).
+- **Predice mercados de goles**: Over/Under 2.5 (con distribución de Poisson), resultado más probable, goles esperados por equipo.
+- **Predice Ambos Marcan (BTTS)**, Doble Chance, y corners.
+- **Genera recomendaciones** con nivel de confianza (alta/media/baja) y stake recomendado.
+- **Analiza el valor de una apuesta**: compara la probabilidad del cerebro con la cuota de la casa para detectar valor positivo (la clave para apostar con ventaja).
+
+### Tipos de apuestas de fútbol soportados
+
+Ganador (1X2), Doble Chance, Over/Under goles, Ambos marcan, Handicap asiático, Resultado exacto, Empate no válido, Total de goles, Over/Under corners y tarjetas.
+
+### Estructura del cerebro de fútbol
+
+```
+src/
+├── config/footballConstants.js    # Ligas, tipos de apuesta, estadísticas, pesos del modelo
+├── models/
+│   ├── Team.js                    # Modelo de equipo (stats, local/visitante, forma, h2h)
+│   └── FootballMatch.js           # Modelo de partido de fútbol
+├── services/FootballAnalyzer.js   # EL CEREBRO: motor de predicciones y recomendaciones
+├── cli/FootballBotCLI.js           # Interfaz interactiva en terminal
+└── footballBot.js                 # Punto de entrada
+```
+
+### Menú del cerebro
+
+```
+1. Equipos
+2. Partidos
+3. Cerebro - Analisis y predicciones
+4. Gestion de apuestas
+5. Estadisticas
+6. Datos (cargar/guardar)
+7. Salir
+```
+
+El cerebro incluye datos de ejemplo (Real Madrid, Barcelona, Atlético, Manchester City, Liverpool, Bayern, Dortmund, Girona) para probarlo al instante.
+
+---
+
+
 Este es un sistema completo para analizar y gestionar apuestas de tenis con enfoque exclusivo en partidos que se juegan en **piso duro** (hard court). El sistema analiza todos los tipos de apuestas disponibles: **Match Winner, Handicap, Over/Under, Correct Score, First Set Winner, Total Sets, Total Games, Ace Count, Tiebreak Winner**, y más.
 
 ## 🚀 Características Principales
