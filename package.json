@@ -6,8 +6,11 @@
   "scripts": {
     "start": "node src/index.js",
     "bot": "node src/index.js",
+    "football": "node src/footballBot.js",
+    "futbol": "node src/footballBot.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "sample": "node -e \"const TennisAnalyzer = require('./src/services/TennisAnalyzer'); const analyzer = new TennisAnalyzer(); analyzer.loadSampleData(); console.log('Datos de ejemplo cargados:', analyzer.getAllPlayers().length, 'jugadores,', analyzer.getAllMatches().length, 'partidos');\""
+    "sample": "node -e \"const TennisAnalyzer = require('./src/services/TennisAnalyzer'); const analyzer = new TennisAnalyzer(); analyzer.loadSampleData(); console.log('Datos de ejemplo cargados:', analyzer.getAllPlayers().length, 'jugadores,', analyzer.getAllMatches().length, 'partidos');\"",
+    "sample-football": "node -e \"const FootballAnalyzer = require('./src/services/FootballAnalyzer'); const brain = new FootballAnalyzer(); const r = brain.loadSampleData(); console.log('Cerebro de futbol cargado:', r.teams, 'equipos,', r.matches, 'partidos,', r.upcoming, 'proximos');\""
   },
   "repository": {
     "type": "git",
