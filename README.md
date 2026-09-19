@@ -73,9 +73,6 @@ cd Io-0.001
 
 # Instalar dependencias
 npm install
-
-# Opcional: Instalar chalk para colores (mejora la experiencia)
-npm install chalk
 ```
 
 ## 🚀 Uso
