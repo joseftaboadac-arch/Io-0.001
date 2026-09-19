@@ -143,7 +143,17 @@ class TennisBotCLI_Part3 {
       bookmaker: 'Manual'
     };
     
-    const bet = this.cli.betManager.createBet(betData);
+    let bet;
+    try {
+      bet = this.cli.betManager.createBet(betData);
+    } catch (error) {
+      console.log('\nNo se pudo crear la apuesta: ' + error.message);
+      this.cli.prompt('Presiona Enter para continuar...', () => {
+        this.cli.currentMatch = null;
+        this.cli.showBetsMenu();
+      });
+      return;
+    }
     
     console.log('\nApuesta creada con exito!');
     console.log('ID: ' + bet.id);
@@ -153,6 +163,9 @@ class TennisBotCLI_Part3 {
     console.log('Odds: ' + odds);
     console.log('Cantidad: ' + stake);
     console.log('Payout potencial: ' + bet.potentialPayout.toFixed(2));
+    
+    const stats = this.cli.betManager.getStatistics();
+    console.log('Bankroll disponible: ' + stats.bankroll.available.toFixed(2));
     
     this.cli.prompt('Presiona Enter para continuar...', () => {
       this.cli.currentMatch = null;
