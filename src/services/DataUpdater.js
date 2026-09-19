@@ -1,4 +1,5 @@
 const fs = require('fs');
+const fsp = fs.promises;
 const path = require('path');
 const axios = require('axios');
 const { SURFACES, TOURNAMENTS, HARD_COURT_TOURNAMENTS } = require('../config/constants');
@@ -105,29 +106,29 @@ class DataUpdater {
     try {
       // Verificar si el directorio existe
       if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+        await fsp.mkdir(dataDir, { recursive: true });
         return;
       }
       
       // Leer archivos de jugadores
       const playersFile = path.join(dataDir, 'players.json');
       if (fs.existsSync(playersFile)) {
-        const playersData = JSON.parse(fs.readFileSync(playersFile, 'utf8'));
-        this.importPlayers(playersData);
+        const playersContent = await fsp.readFile(playersFile, 'utf8');
+        this.importPlayers(JSON.parse(playersContent));
       }
       
       // Leer archivos de partidos
       const matchesFile = path.join(dataDir, 'matches.json');
       if (fs.existsSync(matchesFile)) {
-        const matchesData = JSON.parse(fs.readFileSync(matchesFile, 'utf8'));
-        this.importMatches(matchesData);
+        const matchesContent = await fsp.readFile(matchesFile, 'utf8');
+        this.importMatches(JSON.parse(matchesContent));
       }
       
       // Leer archivos de apuestas
       const betsFile = path.join(dataDir, 'bets.json');
       if (fs.existsSync(betsFile)) {
-        const betsData = JSON.parse(fs.readFileSync(betsFile, 'utf8'));
-        this.betManager.importData(betsData);
+        const betsContent = await fsp.readFile(betsFile, 'utf8');
+        this.betManager.importData(JSON.parse(betsContent));
       }
       
       console.log('Datos cargados desde archivos locales');
@@ -256,15 +257,22 @@ class DataUpdater {
     
     let importedCount = 0;
     
+    const playersById = new Map();
+    const playersByName = new Map();
+    this.analyzer.getAllPlayers().forEach(p => {
+      playersById.set(p.id, p);
+      playersByName.set(p.name.toLowerCase(), p);
+    });
+    
     playersData.forEach(playerData => {
       // Verificar si el jugador ya existe
-      const existingPlayer = this.analyzer.getAllPlayers().find(p => 
-        p.id === playerData.id || 
-        p.name.toLowerCase() === playerData.name.toLowerCase()
-      );
+      const existingPlayer = playersById.get(playerData.id) || 
+        playersByName.get((playerData.name || '').toLowerCase());
       
       if (!existingPlayer) {
-        this.analyzer.addPlayer(playerData);
+        const player = this.analyzer.addPlayer(playerData);
+        playersById.set(player.id, player);
+        playersByName.set(player.name.toLowerCase(), player);
         importedCount++;
       } else {
         // Actualizar jugador existente
@@ -291,7 +299,7 @@ class DataUpdater {
     
     matchesData.forEach(matchData => {
       // Verificar si el partido ya existe
-      const existingMatch = this.analyzer.getAllMatches().find(m => m.id === matchData.id);
+      const existingMatch = this.analyzer.getMatch(matchData.id);
       
       if (!existingMatch) {
         // Añadir nuevo partido
@@ -340,7 +348,7 @@ class DataUpdater {
     let updatedCount = 0;
     
     oddsData.forEach(odds => {
-      const match = this.analyzer.getAllMatches().find(m => m.id === odds.matchId);
+      const match = this.analyzer.getMatch(odds.matchId);
       
       if (match) {
         // Actualizar odds del partido
@@ -355,7 +363,7 @@ class DataUpdater {
   /**
    * Guarda todos los datos en archivos locales
    */
-  saveToLocalFiles() {
+  async saveToLocalFiles() {
     if (!this.dataSources.local.enabled) return;
     
     const dataDir = this.dataSources.local.path;
@@ -363,20 +371,17 @@ class DataUpdater {
     try {
       // Crear directorio si no existe
       if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+        await fsp.mkdir(dataDir, { recursive: true });
       }
       
-      // Guardar jugadores
-      const playersData = this.analyzer.exportData().players;
-      fs.writeFileSync(path.join(dataDir, 'players.json'), JSON.stringify(playersData, null, 2));
-      
-      // Guardar partidos
-      const matchesData = this.analyzer.exportData().matches;
-      fs.writeFileSync(path.join(dataDir, 'matches.json'), JSON.stringify(matchesData, null, 2));
-      
-      // Guardar apuestas
+      const exportedData = this.analyzer.exportData();
       const betsData = this.betManager.exportData();
-      fs.writeFileSync(path.join(dataDir, 'bets.json'), JSON.stringify(betsData, null, 2));
+      
+      await Promise.all([
+        fsp.writeFile(path.join(dataDir, 'players.json'), JSON.stringify(exportedData.players)),
+        fsp.writeFile(path.join(dataDir, 'matches.json'), JSON.stringify(exportedData.matches)),
+        fsp.writeFile(path.join(dataDir, 'bets.json'), JSON.stringify(betsData))
+      ]);
       
       console.log('Datos guardados en archivos locales');
     } catch (error) {
@@ -387,9 +392,9 @@ class DataUpdater {
   /**
    * Sincroniza datos con un archivo específico
    */
-  syncWithFile(filePath) {
+  async syncWithFile(filePath) {
     try {
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      const data = JSON.parse(await fsp.readFile(filePath, 'utf8'));
       
       if (data.players) {
         this.importPlayers(data.players);
@@ -412,18 +417,21 @@ class DataUpdater {
   /**
    * Exporta todos los datos a un archivo
    */
-  exportToFile(filePath) {
+  async exportToFile(filePath) {
     try {
+      const exportedAnalyzerData = this.analyzer.exportData();
+      const exportedBetData = this.betManager.exportData();
+      
       const data = {
-        players: this.analyzer.exportData().players,
-        matches: this.analyzer.exportData().matches,
-        bets: this.betManager.exportData().bets,
-        betSlips: this.betManager.exportData().betSlips,
+        players: exportedAnalyzerData.players,
+        matches: exportedAnalyzerData.matches,
+        bets: exportedBetData.bets,
+        betSlips: exportedBetData.betSlips,
         statistics: this.betManager.getStatistics(),
         lastUpdated: new Date().toISOString()
       };
       
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+      await fsp.writeFile(filePath, JSON.stringify(data, null, 2));
       console.log(`Datos exportados a ${filePath}`);
     } catch (error) {
       console.error(`Error al exportar a ${filePath}:`, error.message);
@@ -587,7 +595,7 @@ class DataUpdater {
   /**
    * Crea datos de ejemplo para demostración
    */
-  createSampleData() {
+  async createSampleData() {
     // Cargar datos de ejemplo en el analizador
     const analyzerSample = this.analyzer.loadSampleData();
     
@@ -595,7 +603,7 @@ class DataUpdater {
     const betManagerSample = this.betManager.createSampleBets();
     
     // Guardar en archivos locales
-    this.saveToLocalFiles();
+    await this.saveToLocalFiles();
     
     return {
       analyzer: analyzerSample,

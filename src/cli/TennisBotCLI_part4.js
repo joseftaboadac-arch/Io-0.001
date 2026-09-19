@@ -86,22 +86,36 @@ class TennisBotCLI_Part4 {
   loadSampleData() {
     console.log('Cargando datos de ejemplo...');
     
-    this.cli.dataUpdater.createSampleData();
-    console.log('Datos de ejemplo cargados');
-    
-    this.cli.prompt('Presiona Enter para volver...', () => {
-      this.updateData();
+    Promise.resolve(this.cli.dataUpdater.createSampleData()).then(() => {
+      console.log('Datos de ejemplo cargados');
+      
+      this.cli.prompt('Presiona Enter para volver...', () => {
+        this.updateData();
+      });
+    }).catch(error => {
+      console.log('Error: ' + error.message);
+      
+      this.cli.prompt('Presiona Enter para volver...', () => {
+        this.updateData();
+      });
     });
   }
   
   saveData() {
     console.log('Guardando datos...');
     
-    this.cli.dataUpdater.saveToLocalFiles();
-    console.log('Datos guardados en archivos locales');
-    
-    this.cli.prompt('Presiona Enter para volver...', () => {
-      this.updateData();
+    Promise.resolve(this.cli.dataUpdater.saveToLocalFiles()).then(() => {
+      console.log('Datos guardados en archivos locales');
+      
+      this.cli.prompt('Presiona Enter para volver...', () => {
+        this.updateData();
+      });
+    }).catch(error => {
+      console.log('Error: ' + error.message);
+      
+      this.cli.prompt('Presiona Enter para volver...', () => {
+        this.updateData();
+      });
     });
   }
   
