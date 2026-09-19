@@ -29,6 +29,12 @@ class TennisBotCLI {
     this.showMainMenu();
   }
   
+  prompt(question, callback) {
+    this.rl.question(question, (input) => {
+      callback(input);
+    });
+  }
+  
   showMainMenu() {
     console.log('\n=== MENU PRINCIPAL ===\n');
     console.log('1. Jugadores');
@@ -310,3 +316,5 @@ class TennisBotCLI {
     });
   }
 }
+
+module.exports = TennisBotCLI;

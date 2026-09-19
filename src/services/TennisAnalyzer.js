@@ -2,6 +2,39 @@ const { SURFACES, STAT_CATEGORIES, BET_TYPES, TOURNAMENTS, HARD_COURT_TOURNAMENT
 const Player = require('../models/Player');
 const Match = require('../models/Match');
 
+const PREDICTION_WEIGHTS = {
+  surfaceWinRate: 0.35,
+  overallWinRate: 0.25,
+  ranking: 0.15,
+  currentForm: 0.15,
+  headToHead: 0.10
+};
+const RATING_SCALE = 12;
+const SET_PROBABILITY_SHRINK = 0.9;
+const BASELINE_TIEBREAK_PROBABILITY = 32;
+const BASELINE_TOTAL_GAMES = 22.5;
+const TOTAL_GAMES_STANDARD_DEVIATION = 4;
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
+function erf(x) {
+  const sign = x < 0 ? -1 : 1;
+  const absX = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * absX);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-absX * absX);
+  return sign * y;
+}
+
+function normalCdf(z) {
+  return 0.5 * (1 + erf(z / Math.SQRT2));
+}
+
 /**
  * Analizador especializado en tenis en piso duro
  * Proporciona análisis avanzados para apuestas en esta superficie
@@ -179,52 +212,42 @@ class TennisAnalyzer {
    * Predice el resultado de un partido
    */
   predictMatchOutcome(player1, player2, surface = SURFACES.HARD) {
-    const p1Stats = player1.getSurfaceStats(surface);
-    const p2Stats = player2.getSurfaceStats(surface);
+    const p1Rating = this.calculatePlayerScore(player1, player2, surface, PREDICTION_WEIGHTS);
+    const p2Rating = this.calculatePlayerScore(player2, player1, surface, PREDICTION_WEIGHTS);
     
-    // Factores de peso para la predicción
-    const weights = {
-      surfaceWinRate: 0.35,
-      overallWinRate: 0.25,
-      ranking: 0.15,
-      currentForm: 0.15,
-      headToHead: 0.10
-    };
-    
-    // Calcular puntuación para cada jugador
-    const p1Score = this.calculatePlayerScore(player1, player2, surface, weights);
-    const p2Score = this.calculatePlayerScore(player2, player1, surface, weights);
-    
-    const totalScore = p1Score + p2Score;
-    const p1Probability = (p1Score / totalScore) * 100;
-    const p2Probability = (p2Score / totalScore) * 100;
-    
-    // Predicción del número de sets
-    const setsPrediction = this.predictTotalSets(player1, player2, surface);
-    
-    // Predicción de tie-break
-    const tiebreakPrediction = this.predictTiebreak(player1, player2, surface);
-    
-    // Predicción de over/under juegos
-    const gamesPrediction = this.predictTotalGames(player1, player2, surface);
+    const p1WinProbability = this.ratingToWinProbability(p1Rating, p2Rating);
+    const p1SetProbability = 0.5 + (p1WinProbability - 0.5) * SET_PROBABILITY_SHRINK;
+    const twoSetsProbability = Math.pow(p1SetProbability, 2) + Math.pow(1 - p1SetProbability, 2);
     
     return {
       matchWinner: {
-        player1Probability: p1Probability.toFixed(2) + '%',
-        player2Probability: p2Probability.toFixed(2) + '%',
-        favorite: p1Probability > p2Probability ? player1.getFullName() : player2.getFullName(),
-        underdog: p1Probability > p2Probability ? player2.getFullName() : player1.getFullName(),
-        confidence: Math.abs(p1Probability - p2Probability) < 10 ? 'low' : 
-                    Math.abs(p1Probability - p2Probability) < 25 ? 'medium' : 'high'
+        player1Probability: round2(p1WinProbability * 100),
+        player2Probability: round2((1 - p1WinProbability) * 100),
+        favorite: p1WinProbability > 0.5 ? player1.getFullName() : player2.getFullName(),
+        underdog: p1WinProbability > 0.5 ? player2.getFullName() : player1.getFullName(),
+        confidence: Math.abs(p1WinProbability - 0.5) * 200 < 10 ? 'low' : 
+                    Math.abs(p1WinProbability - 0.5) * 200 < 25 ? 'medium' : 'high'
       },
-      totalSets: setsPrediction,
-      tiebreak: tiebreakPrediction,
-      totalGames: gamesPrediction,
+      totalSets: {
+        twoSetsProbability: round2(twoSetsProbability * 100),
+        threeSetsProbability: round2((1 - twoSetsProbability) * 100),
+        prediction: twoSetsProbability >= 0.5 ? '2 sets' : '3 sets'
+      },
+      tiebreak: this.predictTiebreak(player1, player2, surface),
+      totalGames: this.predictTotalGames(player1, player2, surface),
       firstSetWinner: {
-        player1Probability: (p1Score / totalScore * 100 * 1.1).toFixed(2) + '%', // Ajuste para primer set
-        player2Probability: (p2Score / totalScore * 100 * 1.1).toFixed(2) + '%'
+        player1Probability: round2(p1SetProbability * 100),
+        player2Probability: round2((1 - p1SetProbability) * 100),
+        favorite: p1SetProbability > 0.5 ? player1.getFullName() : player2.getFullName()
       }
     };
+  }
+  
+  /**
+   * Convierte la diferencia de rating entre dos jugadores en probabilidad de victoria
+   */
+  ratingToWinProbability(rating1, rating2) {
+    return 1 / (1 + Math.exp(-(rating1 - rating2) / RATING_SCALE));
   }
   
   /**
@@ -261,81 +284,55 @@ class TennisAnalyzer {
   /**
    * Predice el número de sets
    */
-  predictTotalSets(player1, player2, surface) {
-    const p1Stats = player1.getSurfaceStats(surface);
-    const p2Stats = player2.getSurfaceStats(surface);
+  predictTotalSets(player1, player2, surface = SURFACES.HARD) {
+    const p1Rating = this.calculatePlayerScore(player1, player2, surface, PREDICTION_WEIGHTS);
+    const p2Rating = this.calculatePlayerScore(player2, player1, surface, PREDICTION_WEIGHTS);
     
-    // Si ambos jugadores tienen alto win rate en la superficie, es más probable que sea a 2 sets
-    const avgWinRate = (p1Stats.winRate + p2Stats.winRate) / 2;
+    const p1WinProbability = this.ratingToWinProbability(p1Rating, p2Rating);
+    const p1SetProbability = 0.5 + (p1WinProbability - 0.5) * SET_PROBABILITY_SHRINK;
+    const twoSetsProbability = Math.pow(p1SetProbability, 2) + Math.pow(1 - p1SetProbability, 2);
     
-    // Si el win rate promedio es alto, más probabilidad de 2 sets
-    if (avgWinRate > 70) {
-      return {
-        twoSetsProbability: '70%',
-        threeSetsProbability: '30%',
-        prediction: '2 sets'
-      };
-    } else if (avgWinRate > 60) {
-      return {
-        twoSetsProbability: '60%',
-        threeSetsProbability: '40%',
-        prediction: '2 sets'
-      };
-    } else {
-      return {
-        twoSetsProbability: '40%',
-        threeSetsProbability: '60%',
-        prediction: '3 sets'
-      };
-    }
+    return {
+      twoSetsProbability: round2(twoSetsProbability * 100),
+      threeSetsProbability: round2((1 - twoSetsProbability) * 100),
+      prediction: twoSetsProbability >= 0.5 ? '2 sets' : '3 sets'
+    };
   }
   
   /**
    * Predice si habrá tie-break
    */
-  predictTiebreak(player1, player2, surface) {
+  predictTiebreak(player1, player2, surface = SURFACES.HARD) {
     const p1Stats = player1.stats;
     const p2Stats = player2.stats;
     
-    // Jugadores con buen servicio y retorno tienen más probabilidad de tie-break
-    const p1ServeStrength = p1Stats[STAT_CATEGORIES.SERVICE_POINTS_WON] || 0;
-    const p2ServeStrength = p2Stats[STAT_CATEGORIES.SERVICE_POINTS_WON] || 0;
-    const p1ReturnStrength = p1Stats[STAT_CATEGORIES.RETURN_POINTS_WON] || 0;
-    const p2ReturnStrength = p2Stats[STAT_CATEGORIES.RETURN_POINTS_WON] || 0;
+    const p1ServeStrength = p1Stats[STAT_CATEGORIES.SERVICE_POINTS_WON] || 65;
+    const p2ServeStrength = p2Stats[STAT_CATEGORIES.SERVICE_POINTS_WON] || 65;
+    const p1ReturnStrength = p1Stats[STAT_CATEGORIES.RETURN_POINTS_WON] || 38;
+    const p2ReturnStrength = p2Stats[STAT_CATEGORIES.RETURN_POINTS_WON] || 38;
     
     const avgServeStrength = (p1ServeStrength + p2ServeStrength) / 2;
     const avgReturnStrength = (p1ReturnStrength + p2ReturnStrength) / 2;
     
-    // Si ambos tienen buen servicio y retorno, alta probabilidad de tie-break
-    if (avgServeStrength > 70 && avgReturnStrength > 40) {
-      return {
-        probability: '75%',
-        prediction: 'Sí habrá tie-break'
-      };
-    } else if (avgServeStrength > 65 || avgReturnStrength > 35) {
-      return {
-        probability: '60%',
-        prediction: 'Probablemente habrá tie-break'
-      };
-    } else {
-      return {
-        probability: '40%',
-        prediction: 'Poco probable tie-break'
-      };
-    }
+    const serveDominance = (avgServeStrength - 65) * 1.2;
+    const returnDominance = (avgReturnStrength - 38) * -1.0;
+    const probability = clamp(
+      BASELINE_TIEBREAK_PROBABILITY + serveDominance + returnDominance,
+      5,
+      85
+    );
+    
+    return {
+      probability: round2(probability),
+      prediction: probability >= 60 ? 'Sí habrá tie-break' : 
+                  probability >= 45 ? 'Probablemente habrá tie-break' : 'Poco probable tie-break'
+    };
   }
   
   /**
    * Predice el número total de juegos
    */
-  predictTotalGames(player1, player2, surface) {
-    const p1Stats = player1.getSurfaceStats(surface);
-    const p2Stats = player2.getSurfaceStats(surface);
-    
-    // Promedio de juegos por partido en piso duro
-    const avgGames = 22.5; // Promedio histórico en piso duro
-    
-    // Ajustar basado en el estilo de juego
+  predictTotalGames(player1, player2, surface = SURFACES.HARD) {
     const p1Style = player1.playStyle;
     const p2Style = player2.playStyle;
     
@@ -348,14 +345,25 @@ class TennisAnalyzer {
       adjustment = -2;
     }
     
-    const predictedGames = avgGames + adjustment;
+    const predictedGames = BASELINE_TOTAL_GAMES + adjustment;
+    const line = Math.round(predictedGames) - 0.5;
+    const overProbability = this.calculateGamesOverProbability(predictedGames, line);
     
     return {
-      predictedGames: predictedGames.toFixed(1),
-      overProbability: '55%',
-      underProbability: '45%',
-      line: predictedGames.toFixed(1)
+      predictedGames: round2(predictedGames),
+      overProbability: round2(overProbability * 100),
+      underProbability: round2((1 - overProbability) * 100),
+      line,
+      standardDeviation: TOTAL_GAMES_STANDARD_DEVIATION
     };
+  }
+  
+  /**
+   * Probabilidad de que el total de juegos supere una línea
+   */
+  calculateGamesOverProbability(predictedGames, line, standardDeviation = TOTAL_GAMES_STANDARD_DEVIATION) {
+    const z = (line - predictedGames) / standardDeviation;
+    return clamp(1 - normalCdf(z), 0, 1);
   }
   
   /**
@@ -366,8 +374,8 @@ class TennisAnalyzer {
     const recommendations = [];
     
     // Recomendación para ganador del partido
-    const favoriteProb = parseFloat(predictions.matchWinner.favorite === player1.getFullName() ? 
-      predictions.matchWinner.player1Probability : predictions.matchWinner.player2Probability);
+    const favoriteProb = predictions.matchWinner.favorite === player1.getFullName() ? 
+      predictions.matchWinner.player1Probability : predictions.matchWinner.player2Probability;
     
     if (favoriteProb > 65) {
       const favorite = predictions.matchWinner.favorite;
@@ -400,8 +408,8 @@ class TennisAnalyzer {
     }
     
     // Recomendación para primer set
-    const firstSetFavoriteProb = parseFloat(predictions.firstSetWinner.player1Probability);
-    const firstSetUnderdogProb = parseFloat(predictions.firstSetWinner.player2Probability);
+    const firstSetFavoriteProb = predictions.firstSetWinner.player1Probability;
+    const firstSetUnderdogProb = predictions.firstSetWinner.player2Probability;
     
     if (Math.abs(firstSetFavoriteProb - firstSetUnderdogProb) > 15) {
       const firstSetFavorite = firstSetFavoriteProb > firstSetUnderdogProb ? 'player1' : 'player2';
@@ -426,7 +434,7 @@ class TennisAnalyzer {
     }
     
     // Recomendación para over/under juegos
-    const predictedGames = parseFloat(predictions.totalGames.predictedGames);
+    const predictedGames = predictions.totalGames.predictedGames;
     if (predictedGames > 22) {
       recommendations.push({
         betType: BET_TYPES.TOTAL_GAMES,
@@ -467,34 +475,36 @@ class TennisAnalyzer {
     switch (betType) {
       case BET_TYPES.MATCH_WINNER:
         if (selection === 'player1') {
-          predictedProbability = parseFloat(predictions.matchWinner.player1Probability);
+          predictedProbability = predictions.matchWinner.player1Probability;
         } else if (selection === 'player2') {
-          predictedProbability = parseFloat(predictions.matchWinner.player2Probability);
+          predictedProbability = predictions.matchWinner.player2Probability;
         }
         break;
         
       case BET_TYPES.FIRST_SET_WINNER:
         if (selection === 'player1') {
-          predictedProbability = parseFloat(predictions.firstSetWinner.player1Probability);
+          predictedProbability = predictions.firstSetWinner.player1Probability;
         } else if (selection === 'player2') {
-          predictedProbability = parseFloat(predictions.firstSetWinner.player2Probability);
+          predictedProbability = predictions.firstSetWinner.player2Probability;
         }
         break;
         
       case BET_TYPES.TOTAL_SETS:
         if (selection.direction === 'over' && selection.line === 2.5) {
-          predictedProbability = parseFloat(predictions.totalSets.threeSetsProbability);
+          predictedProbability = predictions.totalSets.threeSetsProbability;
         } else if (selection.direction === 'under' && selection.line === 2.5) {
-          predictedProbability = parseFloat(predictions.totalSets.twoSetsProbability);
+          predictedProbability = predictions.totalSets.twoSetsProbability;
         }
         break;
         
       case BET_TYPES.TOTAL_GAMES:
-        const predictedGames = parseFloat(predictions.totalGames.predictedGames);
+        const overProbability = this.calculateGamesOverProbability(
+          predictions.totalGames.predictedGames, selection.line
+        );
         if (selection.direction === 'over') {
-          predictedProbability = predictedGames > selection.line ? 60 : 40;
+          predictedProbability = overProbability * 100;
         } else if (selection.direction === 'under') {
-          predictedProbability = predictedGames < selection.line ? 60 : 40;
+          predictedProbability = (1 - overProbability) * 100;
         }
         break;
     }
@@ -520,9 +530,9 @@ class TennisAnalyzer {
     }
     
     return {
-      predictedProbability: predictedProbability.toFixed(2) + '%',
-      impliedProbability: impliedProbability.toFixed(2) + '%',
-      value: value.toFixed(2) + '%',
+      predictedProbability: round2(predictedProbability),
+      impliedProbability: round2(impliedProbability),
+      value: round2(value),
       valueRating,
       recommendation: value > 0 ? 'Recomendada' : 'No recomendada',
       confidence: Math.abs(value) > 10 ? 'high' : Math.abs(value) > 5 ? 'medium' : 'low'

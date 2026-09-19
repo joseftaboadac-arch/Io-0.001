@@ -6,23 +6,45 @@ const { BET_TYPES, ODDS_FORMATS } = require('../config/constants');
  * Permite crear, gestionar y analizar apuestas de tenis
  */
 class BetManager {
-  constructor() {
+  constructor(bankrollConfig = {}) {
     this.bets = new Map();
     this.betSlips = new Map();
-    this.totalStaked = 0;
-    this.totalWon = 0;
-    this.totalLost = 0;
-    this.totalReturned = 0;
-    this.totalVoid = 0;
+    this.bankroll = {
+      initialBankroll: bankrollConfig.initialBankroll || 1000,
+      maxStakePercent: bankrollConfig.maxStakePercent || 10,
+      kellyFraction: bankrollConfig.kellyFraction || 0.25
+    };
+  }
+  
+  /**
+   * Configura la gestión de bankroll
+   */
+  configureBankroll(config = {}) {
+    if (config.initialBankroll !== undefined) {
+      this.bankroll.initialBankroll = config.initialBankroll;
+    }
+    if (config.maxStakePercent !== undefined) {
+      this.bankroll.maxStakePercent = config.maxStakePercent;
+    }
+    if (config.kellyFraction !== undefined) {
+      this.bankroll.kellyFraction = config.kellyFraction;
+    }
+    return this.bankroll;
   }
   
   /**
    * Crea una nueva apuesta
    */
   createBet(betData) {
+    const stake = betData.stake || 0;
+    const validation = this.validateStake(stake);
+    
+    if (!validation.valid) {
+      throw new Error(validation.message);
+    }
+    
     const bet = new Bet(betData);
     this.bets.set(bet.id, bet);
-    this.totalStaked += bet.stake;
     
     // Añadir a bet slip si se especifica
     if (betData.betSlipId) {
@@ -30,6 +52,60 @@ class BetManager {
     }
     
     return bet;
+  }
+  
+  /**
+   * Valida que un stake sea coherente con la gestión de bankroll
+   */
+  validateStake(stake) {
+    if (isNaN(stake) || stake <= 0) {
+      return { valid: false, message: 'El stake debe ser un número positivo' };
+    }
+    
+    const stats = this.getStatistics();
+    const available = stats.bankroll.available;
+    
+    if (stake > available) {
+      return { 
+        valid: false, 
+        message: `Stake (${stake.toFixed(2)}) excede el bankroll disponible (${available.toFixed(2)})` 
+      };
+    }
+    
+    const maxStake = stats.bankroll.current * (this.bankroll.maxStakePercent / 100);
+    if (stake > maxStake) {
+      return {
+        valid: false,
+        message: `Stake (${stake.toFixed(2)}) excede el límite del ${this.bankroll.maxStakePercent}% del bankroll (${maxStake.toFixed(2)})`
+      };
+    }
+    
+    return { valid: true };
+  }
+  
+  /**
+   * Calcula el stake recomendado con el criterio de Kelly fraccional
+   * @param {number} winProbability Probabilidad de ganar (entre 0 y 1)
+   * @param {number} decimalOdds Cuota decimal
+   */
+  calculateKellyStake(winProbability, decimalOdds) {
+    const netOdds = decimalOdds - 1;
+    if (netOdds <= 0) {
+      return 0;
+    }
+    
+    const fullKellyFraction = (winProbability * decimalOdds - 1) / netOdds;
+    const fractionalKelly = fullKellyFraction * this.bankroll.kellyFraction;
+    
+    if (fractionalKelly <= 0) {
+      return 0;
+    }
+    
+    const stats = this.getStatistics();
+    const kellyStake = fractionalKelly * stats.bankroll.current;
+    const maxStake = stats.bankroll.current * (this.bankroll.maxStakePercent / 100);
+    
+    return Math.round(Math.min(kellyStake, maxStake, stats.bankroll.available) * 100) / 100;
   }
   
   /**
@@ -81,9 +157,6 @@ class BetManager {
     const bet = this.getBet(betId);
     if (!bet) return null;
     
-    const oldStake = bet.stake;
-    const oldStatus = bet.status;
-    
     // Actualizar la apuesta
     Object.assign(bet, updates);
     
@@ -92,55 +165,8 @@ class BetManager {
       bet.potentialPayout = bet.calculatePotentialPayout();
     }
     
-    // Actualizar totales si cambió el stake
-    if (updates.stake !== undefined) {
-      this.totalStaked += (bet.stake - oldStake);
-    }
-    
-    // Actualizar totales si cambió el estado
-    if (updates.status !== undefined && updates.status !== oldStatus) {
-      this.updateTotalsFromStatusChange(oldStatus, updates.status, bet);
-    }
-    
     bet.lastUpdated = new Date().toISOString();
     return bet;
-  }
-  
-  /**
-   * Actualiza los totales cuando cambia el estado de una apuesta
-   */
-  updateTotalsFromStatusChange(oldStatus, newStatus, bet) {
-    // Restar del total anterior
-    switch (oldStatus) {
-      case 'won':
-        this.totalWon -= bet.getNetProfit();
-        break;
-      case 'lost':
-        this.totalLost -= Math.abs(bet.getNetProfit());
-        break;
-      case 'returned':
-        this.totalReturned -= bet.stake;
-        break;
-      case 'void':
-        this.totalVoid -= bet.stake;
-        break;
-    }
-    
-    // Añadir al nuevo total
-    switch (newStatus) {
-      case 'won':
-        this.totalWon += bet.getNetProfit();
-        break;
-      case 'lost':
-        this.totalLost += Math.abs(bet.getNetProfit());
-        break;
-      case 'returned':
-        this.totalReturned += bet.stake;
-        break;
-      case 'void':
-        this.totalVoid += bet.stake;
-        break;
-    }
   }
   
   /**
@@ -149,19 +175,6 @@ class BetManager {
   deleteBet(betId) {
     const bet = this.getBet(betId);
     if (!bet) return false;
-    
-    // Actualizar totales
-    this.totalStaked -= bet.stake;
-    
-    if (bet.isWon()) {
-      this.totalWon -= bet.getNetProfit();
-    } else if (bet.isLost()) {
-      this.totalLost -= Math.abs(bet.getNetProfit());
-    } else if (bet.status === 'returned') {
-      this.totalReturned -= bet.stake;
-    } else if (bet.status === 'void') {
-      this.totalVoid -= bet.stake;
-    }
     
     // Eliminar de bet slip si existe
     if (bet.betSlipId && this.betSlips.has(bet.betSlipId)) {
@@ -180,11 +193,7 @@ class BetManager {
     const bet = this.getBet(betId);
     if (!bet) return null;
     
-    const oldStatus = bet.status;
     bet.setResult(result);
-    
-    // Actualizar totales
-    this.updateTotalsFromStatusChange(oldStatus, bet.status, bet);
     
     return bet;
   }
@@ -334,31 +343,48 @@ class BetManager {
     const allBets = this.getAllBets();
     const totalBets = allBets.length;
     const pendingBets = this.getBetsByStatus('pending').length;
-    const wonBets = this.getBetsByStatus('won').length;
-    const lostBets = this.getBetsByStatus('lost').length;
+    const wonBetList = this.getBetsByStatus('won');
+    const lostBetList = this.getBetsByStatus('lost');
     const voidBets = this.getBetsByStatus('void').length;
     const returnedBets = this.getBetsByStatus('returned').length;
     
-    const winRate = totalBets > 0 ? (wonBets / (wonBets + lostBets)) * 100 : 0;
-    const netProfit = this.totalWon - this.totalLost;
-    const roi = this.totalStaked > 0 ? (netProfit / this.totalStaked) * 100 : 0;
+    const totalStaked = allBets.reduce((total, bet) => total + bet.stake, 0);
+    const totalWon = wonBetList.reduce((total, bet) => total + bet.getNetProfit(), 0);
+    const totalLost = lostBetList.reduce((total, bet) => total + bet.stake, 0);
+    const totalReturned = this.getBetsByStatus('returned').reduce((total, bet) => total + bet.stake, 0);
+    const totalVoid = this.getBetsByStatus('void').reduce((total, bet) => total + bet.stake, 0);
+    const pendingExposure = this.getBetsByStatus('pending').reduce((total, bet) => total + bet.stake, 0);
+    
+    const winRate = wonBetList.length + lostBetList.length > 0 ? 
+      (wonBetList.length / (wonBetList.length + lostBetList.length)) * 100 : 0;
+    const netProfit = totalWon - totalLost;
+    const roi = totalStaked > 0 ? (netProfit / totalStaked) * 100 : 0;
+    const currentBankroll = this.bankroll.initialBankroll + netProfit;
     
     return {
       totalBets,
       pendingBets,
-      wonBets,
-      lostBets,
+      wonBets: wonBetList.length,
+      lostBets: lostBetList.length,
       voidBets,
       returnedBets,
-      totalStaked: this.totalStaked,
-      totalWon: this.totalWon,
-      totalLost: this.totalLost,
-      totalReturned: this.totalReturned,
-      totalVoid: this.totalVoid,
+      totalStaked,
+      totalWon,
+      totalLost,
+      totalReturned,
+      totalVoid,
       netProfit,
       winRate: winRate.toFixed(2) + '%',
       roi: roi.toFixed(2) + '%',
-      betSlips: this.betSlips.size
+      betSlips: this.betSlips.size,
+      bankroll: {
+        initial: this.bankroll.initialBankroll,
+        current: currentBankroll,
+        pendingExposure,
+        available: currentBankroll - pendingExposure,
+        maxStakePercent: this.bankroll.maxStakePercent,
+        kellyFraction: this.bankroll.kellyFraction
+      }
     };
   }
   
@@ -493,17 +519,6 @@ class BetManager {
       data.bets.forEach(betData => {
         const bet = new Bet(betData);
         this.bets.set(bet.id, bet);
-        this.totalStaked += bet.stake;
-        
-        if (bet.isWon()) {
-          this.totalWon += bet.getNetProfit();
-        } else if (bet.isLost()) {
-          this.totalLost += Math.abs(bet.getNetProfit());
-        } else if (bet.status === 'returned') {
-          this.totalReturned += bet.stake;
-        } else if (bet.status === 'void') {
-          this.totalVoid += bet.stake;
-        }
       });
     }
     
@@ -586,9 +601,7 @@ class BetManager {
       }
     ];
     
-    sampleBets.forEach(betData => {
-      this.createBet(betData);
-    });
+    const createdBets = sampleBets.map(betData => this.createBet(betData));
     
     // Crear un bet slip de ejemplo
     const slip = this.createBetSlip({
@@ -598,12 +611,12 @@ class BetManager {
     });
     
     // Añadir apuestas al slip
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[0].id));
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[1].id));
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[2].id));
+    createdBets.slice(0, 3).forEach(bet => {
+      this.addBetToSlip(slip.id, bet);
+    });
     
     return {
-      bets: sampleBets.length,
+      bets: createdBets.length,
       betSlips: 1
     };
   }
