@@ -24,21 +24,31 @@ class DataUpdater {
           odds: 'https://api.oddsapi.com/v1'
         },
         apiKeys: {
-          atp: null,
-          itf: null,
-          odds: null
-        }
+          atp: process.env.ATP_API_KEY || null,
+          itf: process.env.ITF_API_KEY || null,
+          odds: process.env.ODDS_API_KEY || null
+        },
+        enabled: false
       }
     };
+    this.dataSources.api.enabled = Object.values(this.dataSources.api.apiKeys).some(key => key !== null);
     this.updateInterval = null;
     this.lastUpdate = null;
   }
   
   /**
    * Configura las API keys
+   * Las keys previamente cargadas desde variables de entorno se conservan
+   * a menos que se reemplacen explícitamente
    */
   configureApiKeys(keys) {
-    this.dataSources.api.apiKeys = { ...this.dataSources.api.apiKeys, ...keys };
+    const safeKeys = {};
+    for (const source of ['atp', 'itf', 'odds']) {
+      if (keys && typeof keys[source] === 'string' && keys[source].length > 0) {
+        safeKeys[source] = keys[source];
+      }
+    }
+    this.dataSources.api.apiKeys = { ...this.dataSources.api.apiKeys, ...safeKeys };
     this.dataSources.api.enabled = Object.values(this.dataSources.api.apiKeys).some(key => key !== null);
   }
   

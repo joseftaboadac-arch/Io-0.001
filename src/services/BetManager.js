@@ -84,6 +84,20 @@ class BetManager {
     const oldStake = bet.stake;
     const oldStatus = bet.status;
     
+    // Actualizar la apuesta con lista blanca de campos
+    const UPDATABLE_FIELDS = [
+      'matchId', 'betType', 'betSelection', 'odds', 'oddsFormat',
+      'stake', 'status', 'result', 'userId', 'username',
+      'settledAt', 'notes', 'bookmaker', 'betSlipId'
+    ];
+    const safeUpdates = {};
+    for (const field of UPDATABLE_FIELDS) {
+      if (updates && Object.prototype.hasOwnProperty.call(updates, field)) {
+        safeUpdates[field] = updates[field];
+      }
+    }
+    updates = safeUpdates;
+    
     // Actualizar la apuesta
     Object.assign(bet, updates);
     
