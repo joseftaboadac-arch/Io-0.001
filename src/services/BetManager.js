@@ -586,8 +586,8 @@ class BetManager {
       }
     ];
     
-    sampleBets.forEach(betData => {
-      this.createBet(betData);
+    const createdBets = sampleBets.map(betData => {
+      return this.createBet(betData);
     });
     
     // Crear un bet slip de ejemplo
@@ -598,12 +598,12 @@ class BetManager {
     });
     
     // Añadir apuestas al slip
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[0].id));
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[1].id));
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[2].id));
+    this.addBetToSlip(slip.id, createdBets[0]);
+    this.addBetToSlip(slip.id, createdBets[1]);
+    this.addBetToSlip(slip.id, createdBets[2]);
     
     return {
-      bets: sampleBets.length,
+      bets: createdBets.length,
       betSlips: 1
     };
   }
