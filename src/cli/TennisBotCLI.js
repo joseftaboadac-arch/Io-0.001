@@ -1,4 +1,4 @@
-const readline = require('readline');
+const readline = require('node:readline');
 const { SURFACES, BET_TYPES, ODDS_FORMATS } = require('../config/constants');
 
 /**
@@ -27,6 +27,17 @@ class TennisBotCLI {
     });
     
     this.showMainMenu();
+  }
+  
+  /**
+   * Muestra un mensaje y espera entrada del usuario
+   */
+  prompt(message, callback) {
+    if (!this.rl) {
+      callback('');
+      return;
+    }
+    this.rl.question(message, callback);
   }
   
   showMainMenu() {
@@ -310,3 +321,5 @@ class TennisBotCLI {
     });
   }
 }
+
+module.exports = TennisBotCLI;

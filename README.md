@@ -332,15 +332,24 @@ El sistema genera recomendaciones con diferentes niveles de confianza:
 
 ### Configurar API Keys
 
-El sistema soporta integración con APIs externas:
+El sistema soporta integración con APIs externas. Las claves se cargan automáticamente desde variables de entorno al crear el `DataUpdater`:
+
+```bash
+cp .env.example .env
+# Edita .env con tus claves reales
+export ATP_API_KEY="tu_api_key_atp"
+export ITF_API_KEY="tu_api_key_itf"
+export ODDS_API_KEY="tu_api_key_odds"
+```
+
+Nunca escribas claves reales directamente en el código fuente. Alternativamente puedes configurarlas en tiempo de ejecución:
 
 ```javascript
-// En tu código
 const dataUpdater = new DataUpdater(analyzer, betManager);
 dataUpdater.configureApiKeys({
-  atp: 'tu_api_key_atp',
-  itf: 'tu_api_key_itf',
-  odds: 'tu_api_key_odds'
+  atp: process.env.ATP_API_KEY,
+  itf: process.env.ITF_API_KEY,
+  odds: process.env.ODDS_API_KEY
 });
 ```
 

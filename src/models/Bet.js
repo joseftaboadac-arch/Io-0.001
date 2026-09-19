@@ -1,4 +1,44 @@
+const crypto = require('node:crypto');
 const { BET_TYPES, ODDS_FORMATS } = require('../config/constants');
+
+const VALID_STATUSES = ['pending', 'won', 'lost', 'void', 'returned'];
+const VALID_ODDS_FORMATS = Object.values(ODDS_FORMATS);
+
+/**
+ * Sanitiza un valor numérico: devuelve null si no es un número finito válido
+ */
+function toFiniteNumber(value) {
+  const num = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  if (typeof num === 'number' && Number.isFinite(num) && num >= 0) {
+    return num;
+  }
+  return null;
+}
+
+/**
+ * Sanitiza las odds según su formato:
+ * - decimal/americano: número finito >= 0
+ * - fraccionario: string 'num/den' válido
+ */
+function sanitizeOdds(value, oddsFormat) {
+  if (oddsFormat === ODDS_FORMATS.FRACTIONAL) {
+    if (typeof value === 'string') {
+      const match = value.trim().match(/^(\d+)\s*\/\s*(\d+)$/);
+      if (match && Number(match[2]) > 0) {
+        return `${match[1]}/${match[2]}`;
+      }
+    }
+    return null;
+  }
+  if (oddsFormat === ODDS_FORMATS.AMERICAN) {
+    const num = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+    if (typeof num === 'number' && Number.isFinite(num) && num !== 0) {
+      return num;
+    }
+    return null;
+  }
+  return toFiniteNumber(value);
+}
 
 /**
  * Clase que representa una apuesta
@@ -6,27 +46,31 @@ const { BET_TYPES, ODDS_FORMATS } = require('../config/constants');
  */
 class Bet {
   constructor(data) {
+    data = data && typeof data === 'object' ? data : {};
     this.id = data.id || this.generateId();
     this.matchId = data.matchId || null;
     this.betType = data.betType || BET_TYPES.MATCH_WINNER;
     this.betSelection = data.betSelection || null; // La selección específica (ej: player1, over 2.5, etc.)
-    this.odds = data.odds || 0;
-    this.oddsFormat = data.oddsFormat || ODDS_FORMATS.DECIMAL;
-    this.stake = data.stake || 0; // Cantidad apostada
-    this.potentialPayout = data.potentialPayout || this.calculatePotentialPayout();
-    this.status = data.status || 'pending'; // pending, won, lost, void, returned
+    this.oddsFormat = VALID_ODDS_FORMATS.includes(data.oddsFormat) ? data.oddsFormat : ODDS_FORMATS.DECIMAL;
+    const odds = sanitizeOdds(data.odds, this.oddsFormat);
+    this.odds = odds !== null ? odds : 0;
+    const stake = toFiniteNumber(data.stake);
+    this.stake = stake !== null ? stake : 0; // Cantidad apostada
+    const payout = toFiniteNumber(data.potentialPayout);
+    this.potentialPayout = payout !== null ? payout : this.calculatePotentialPayout();
+    this.status = VALID_STATUSES.includes(data.status) ? data.status : 'pending'; // pending, won, lost, void, returned
     this.result = data.result || null; // Resultado de la apuesta
     
     // Información del usuario
     this.userId = data.userId || null;
-    this.username = data.username || 'anonymous';
+    this.username = typeof data.username === 'string' ? data.username : 'anonymous';
     
     // Información temporal
     this.placedAt = data.placedAt || new Date().toISOString();
     this.settledAt = data.settledAt || null;
     
     // Información adicional
-    this.notes = data.notes || '';
+    this.notes = typeof data.notes === 'string' ? data.notes : '';
     this.bookmaker = data.bookmaker || null;
     this.betSlipId = data.betSlipId || null;
     
@@ -38,7 +82,7 @@ class Bet {
    * Genera un ID único para la apuesta
    */
   generateId() {
-    return 'bet_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    return 'bet_' + crypto.randomUUID();
   }
   
   /**
@@ -48,9 +92,18 @@ class Bet {
     if (this.oddsFormat === ODDS_FORMATS.DECIMAL) {
       return this.stake * this.odds;
     } else if (this.oddsFormat === ODDS_FORMATS.FRACTIONAL) {
-      const [numerator, denominator] = this.odds.split('/').map(Number);
-      return this.stake * (numerator / denominator + 1);
+      if (typeof this.odds !== 'string' || !this.odds.includes('/')) {
+        return this.stake;
+      }
+      const parts = this.odds.split('/').map(Number);
+      if (parts.length !== 2 || !parts.every(Number.isFinite) || parts[1] === 0) {
+        return this.stake;
+      }
+      return this.stake * (parts[0] / parts[1] + 1);
     } else if (this.oddsFormat === ODDS_FORMATS.AMERICAN) {
+      if (typeof this.odds !== 'number' || this.odds === 0) {
+        return this.stake;
+      }
       if (this.odds > 0) {
         return this.stake * (this.odds / 100 + 1);
       } else {
