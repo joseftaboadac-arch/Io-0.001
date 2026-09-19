@@ -8,6 +8,7 @@ const { BET_TYPES, ODDS_FORMATS } = require('../config/constants');
 class BetManager {
   constructor() {
     this.bets = new Map();
+    this.betsByMatchId = new Map();
     this.betSlips = new Map();
     this.totalStaked = 0;
     this.totalWon = 0;
@@ -17,12 +18,40 @@ class BetManager {
   }
   
   /**
+   * Registra una apuesta en el índice por partido
+   */
+   indexBet(bet) {
+    if (!bet.matchId) return;
+    if (!this.betsByMatchId.has(bet.matchId)) {
+      this.betsByMatchId.set(bet.matchId, []);
+    }
+    this.betsByMatchId.get(bet.matchId).push(bet);
+  }
+  
+  /**
+   * Elimina una apuesta del índice por partido (por id)
+   */
+  unindexBet(betId, matchId) {
+    if (!matchId) return;
+    const bets = this.betsByMatchId.get(matchId);
+    if (!bets) return;
+    const index = bets.findIndex(b => b.id === betId);
+    if (index !== -1) {
+      bets.splice(index, 1);
+    }
+    if (bets.length === 0) {
+      this.betsByMatchId.delete(matchId);
+    }
+  }
+  
+  /**
    * Crea una nueva apuesta
    */
   createBet(betData) {
     const bet = new Bet(betData);
     this.bets.set(bet.id, bet);
     this.totalStaked += bet.stake;
+    this.indexBet(bet);
     
     // Añadir a bet slip si se especifica
     if (betData.betSlipId) {
@@ -71,7 +100,7 @@ class BetManager {
    * Filtra apuestas por partido
    */
   getBetsByMatch(matchId) {
-    return Array.from(this.bets.values()).filter(bet => bet.matchId === matchId);
+    return this.betsByMatchId.get(matchId) || [];
   }
   
   /**
@@ -83,9 +112,16 @@ class BetManager {
     
     const oldStake = bet.stake;
     const oldStatus = bet.status;
+    const oldMatchId = bet.matchId;
     
     // Actualizar la apuesta
     Object.assign(bet, updates);
+    
+    // Mantener el índice por partido si cambió el matchId
+    if (updates.matchId !== undefined && updates.matchId !== oldMatchId) {
+      this.unindexBet(bet.id, oldMatchId);
+      this.indexBet(bet);
+    }
     
     // Recalcular potential payout si cambiaron las odds o el stake
     if (updates.odds !== undefined || updates.stake !== undefined || updates.oddsFormat !== undefined) {
@@ -152,6 +188,7 @@ class BetManager {
     
     // Actualizar totales
     this.totalStaked -= bet.stake;
+    this.unindexBet(bet.id, bet.matchId);
     
     if (bet.isWon()) {
       this.totalWon -= bet.getNetProfit();
@@ -333,11 +370,19 @@ class BetManager {
   getStatistics() {
     const allBets = this.getAllBets();
     const totalBets = allBets.length;
-    const pendingBets = this.getBetsByStatus('pending').length;
-    const wonBets = this.getBetsByStatus('won').length;
-    const lostBets = this.getBetsByStatus('lost').length;
-    const voidBets = this.getBetsByStatus('void').length;
-    const returnedBets = this.getBetsByStatus('returned').length;
+    
+    const statusCounts = { pending: 0, won: 0, lost: 0, void: 0, returned: 0 };
+    allBets.forEach(bet => {
+      if (statusCounts[bet.status] !== undefined) {
+        statusCounts[bet.status]++;
+      }
+    });
+    
+    const pendingBets = statusCounts.pending;
+    const wonBets = statusCounts.won;
+    const lostBets = statusCounts.lost;
+    const voidBets = statusCounts.void;
+    const returnedBets = statusCounts.returned;
     
     const winRate = totalBets > 0 ? (wonBets / (wonBets + lostBets)) * 100 : 0;
     const netProfit = this.totalWon - this.totalLost;
@@ -427,51 +472,21 @@ class BetManager {
    * Filtra apuestas por múltiples criterios
    */
   filterBets(criteria) {
-    let bets = this.getAllBets();
+    const start = criteria.startDate ? new Date(criteria.startDate) : null;
+    const end = criteria.endDate ? new Date(criteria.endDate) : null;
     
-    if (criteria.status) {
-      bets = bets.filter(bet => bet.status === criteria.status);
-    }
-    
-    if (criteria.betType) {
-      bets = bets.filter(bet => bet.betType === criteria.betType);
-    }
-    
-    if (criteria.userId) {
-      bets = bets.filter(bet => bet.userId === criteria.userId);
-    }
-    
-    if (criteria.matchId) {
-      bets = bets.filter(bet => bet.matchId === criteria.matchId);
-    }
-    
-    if (criteria.minStake) {
-      bets = bets.filter(bet => bet.stake >= criteria.minStake);
-    }
-    
-    if (criteria.maxStake) {
-      bets = bets.filter(bet => bet.stake <= criteria.maxStake);
-    }
-    
-    if (criteria.minOdds) {
-      bets = bets.filter(bet => bet.odds >= criteria.minOdds);
-    }
-    
-    if (criteria.maxOdds) {
-      bets = bets.filter(bet => bet.odds <= criteria.maxOdds);
-    }
-    
-    if (criteria.startDate) {
-      const start = new Date(criteria.startDate);
-      bets = bets.filter(bet => new Date(bet.placedAt) >= start);
-    }
-    
-    if (criteria.endDate) {
-      const end = new Date(criteria.endDate);
-      bets = bets.filter(bet => new Date(bet.placedAt) <= end);
-    }
-    
-    return bets;
+    return this.getAllBets().filter(bet =>
+      (!criteria.status || bet.status === criteria.status) &&
+      (!criteria.betType || bet.betType === criteria.betType) &&
+      (!criteria.userId || bet.userId === criteria.userId) &&
+      (!criteria.matchId || bet.matchId === criteria.matchId) &&
+      (!criteria.minStake || bet.stake >= criteria.minStake) &&
+      (!criteria.maxStake || bet.stake <= criteria.maxStake) &&
+      (!criteria.minOdds || bet.odds >= criteria.minOdds) &&
+      (!criteria.maxOdds || bet.odds <= criteria.maxOdds) &&
+      (!start || new Date(bet.placedAt) >= start) &&
+      (!end || new Date(bet.placedAt) <= end)
+    );
   }
   
   /**
@@ -494,6 +509,7 @@ class BetManager {
         const bet = new Bet(betData);
         this.bets.set(bet.id, bet);
         this.totalStaked += bet.stake;
+        this.indexBet(bet);
         
         if (bet.isWon()) {
           this.totalWon += bet.getNetProfit();
@@ -586,9 +602,7 @@ class BetManager {
       }
     ];
     
-    sampleBets.forEach(betData => {
-      this.createBet(betData);
-    });
+    const createdBets = sampleBets.map(betData => this.createBet(betData));
     
     // Crear un bet slip de ejemplo
     const slip = this.createBetSlip({
@@ -598,9 +612,9 @@ class BetManager {
     });
     
     // Añadir apuestas al slip
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[0].id));
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[1].id));
-    this.addBetToSlip(slip.id, this.getBet(sampleBets[2].id));
+    this.addBetToSlip(slip.id, createdBets[0]);
+    this.addBetToSlip(slip.id, createdBets[1]);
+    this.addBetToSlip(slip.id, createdBets[2]);
     
     return {
       bets: sampleBets.length,

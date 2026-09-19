@@ -140,6 +140,8 @@ class TennisAnalyzer {
       throw new Error('Uno o ambos jugadores no existen');
     }
     
+    const predictions = this.predictMatchOutcome(player1, player2, surface);
+    
     const analysis = {
       player1: {
         id: player1.id,
@@ -168,8 +170,8 @@ class TennisAnalyzer {
         isInjured: player2.isInjured()
       },
       surface: surface,
-      predictions: this.predictMatchOutcome(player1, player2, surface),
-      recommendations: this.generateRecommendations(player1, player2, surface)
+      predictions: predictions,
+      recommendations: this.generateRecommendations(player1, player2, surface, predictions)
     };
     
     return analysis;
@@ -361,8 +363,8 @@ class TennisAnalyzer {
   /**
    * Genera recomendaciones de apuestas
    */
-  generateRecommendations(player1, player2, surface = SURFACES.HARD) {
-    const predictions = this.predictMatchOutcome(player1, player2, surface);
+  generateRecommendations(player1, player2, surface = SURFACES.HARD, precomputedPredictions = null) {
+    const predictions = precomputedPredictions || this.predictMatchOutcome(player1, player2, surface);
     const recommendations = [];
     
     // Recomendación para ganador del partido
@@ -460,6 +462,7 @@ class TennisAnalyzer {
   analyzeBetValue(match, betType, selection, odds) {
     const analysis = this.analyzeMatchup(match.player1Id, match.player2Id, match.surface);
     const predictions = analysis.predictions;
+    const recommendations = analysis.recommendations;
     
     let predictedProbability = 0;
     
@@ -525,7 +528,8 @@ class TennisAnalyzer {
       value: value.toFixed(2) + '%',
       valueRating,
       recommendation: value > 0 ? 'Recomendada' : 'No recomendada',
-      confidence: Math.abs(value) > 10 ? 'high' : Math.abs(value) > 5 ? 'medium' : 'low'
+      confidence: Math.abs(value) > 10 ? 'high' : Math.abs(value) > 5 ? 'medium' : 'low',
+      recommendations
     };
   }
   
