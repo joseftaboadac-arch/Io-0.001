@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "bot": "node src/index.js",
+    "fifa": "node fifa-bot.js",
+    "fifa-bot": "node fifa-bot.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "sample": "node -e \"const TennisAnalyzer = require('./src/services/TennisAnalyzer'); const analyzer = new TennisAnalyzer(); analyzer.loadSampleData(); console.log('Datos de ejemplo cargados:', analyzer.getAllPlayers().length, 'jugadores,', analyzer.getAllMatches().length, 'partidos');\""
   },

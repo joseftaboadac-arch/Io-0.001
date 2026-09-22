@@ -4,6 +4,34 @@
 
 Este es un sistema completo para analizar y gestionar apuestas de tenis con enfoque exclusivo en partidos que se juegan en **piso duro** (hard court). El sistema analiza todos los tipos de apuestas disponibles: **Match Winner, Handicap, Over/Under, Correct Score, First Set Winner, Total Sets, Total Games, Ace Count, Tiebreak Winner**, y más.
 
+# ⚽ Bot de Selecciones Nacionales (Fechas FIFA)
+
+Un bot simple de un solo archivo, **sin dependencias**, pensado para correr desde el celular (Termux) con Node.js.
+
+- **Archivo**: `fifa-bot.js`
+- **Ejecutar**: `npm run fifa` o `node fifa-bot.js`
+
+## Qué predice para cada partido
+- **Resultado 1X2**: probabilidad de gana local, empate o gana visitante
+- **Goles**: goles esperados por equipo, over/under 1.5, 2.5 y 3.5, ambos marcan (BTTS) y top 5 marcadores exactos
+- **Tarjetas amarillas**: total estimado del partido
+- **Córners**: total estimado del partido
+- **Offsides**: total estimado del partido
+
+## Cómo funciona
+1. Cada equipo tiene promedios por partido: ataque, defensa, amarillas, córners y offsides (editables desde el menú).
+2. Los goles esperados combinan el ataque de un equipo con la defensa del rival, con ventaja para el local.
+3. Con la distribución de Poisson se calculan las probabilidades de resultado, over/under, BTTS y marcadores exactos.
+4. Amarillas, córners y offsides se estiman sumando los promedios de ambos equipos.
+5. Cuanto más precisas sean las estadísticas, mejores serán las predicciones. Actualízalas después de cada fecha FIFA.
+
+## Datos
+- Viene precargado con la **fecha FIFA del 24 de septiembre al 6 de octubre de 2026** (UEFA Nations League 2026/27 + amistosos).
+- Puedes agregar partidos nuevos (por ejemplo, la ventana de noviembre 2026) desde el menú.
+- Tus cambios se guardan en `datos-selecciones.json` (archivo personal, ignorado por git).
+
+> ⚠️ Es una herramienta estadística de estudio. No garantiza resultados reales y no es asesoramiento de apuestas.
+
 ## 🚀 Características Principales
 
 ### 🎯 Análisis Especializado en Piso Duro
