@@ -28,6 +28,7 @@ Un bot simple de un solo archivo, **sin dependencias**, pensado para correr desd
 ## Datos
 - Viene precargado con la **fecha FIFA del 24 de septiembre al 6 de octubre de 2026** (UEFA Nations League 2026/27 + amistosos).
 - Puedes agregar partidos nuevos (por ejemplo, la ventana de noviembre 2026) desde el menú.
+- **Actualizar desde ESPN** (opción 7): descarga partidos y estadísticas reales de la fecha FIFA desde la API pública de ESPN (sin clave ni registro). Sustituye la lista de partidos por la oficial y recalcula los promedios de cada selección con los resultados reales (goles, amarillas, córners, offsides).
 - Tus cambios se guardan en `datos-selecciones.json` (archivo personal, ignorado por git).
 
 > ⚠️ Es una herramienta estadística de estudio. No garantiza resultados reales y no es asesoramiento de apuestas.

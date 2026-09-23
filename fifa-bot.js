@@ -74,6 +74,207 @@ function cargarDatos() {
   }
 }
 
+// Traduccion de nombres ESPN -> nombres internos del bot
+const TRADUCCION_EQUIPOS = {
+  'spain': 'España',
+  'england': 'Inglaterra',
+  'croatia': 'Croacia',
+  'czech republic': 'República Checa',
+  'france': 'Francia',
+  'italy': 'Italia',
+  'germany': 'Alemania',
+  'netherlands': 'Países Bajos',
+  'portugal': 'Portugal',
+  'argentina': 'Argentina',
+  'brazil': 'Brasil',
+  'uruguay': 'Uruguay',
+  'colombia': 'Colombia',
+  'mexico': 'México',
+  'united states': 'Estados Unidos',
+  'usa': 'Estados Unidos',
+  'chile': 'Chile',
+  'peru': 'Perú',
+  'ecuador': 'Ecuador',
+  'japan': 'Japón',
+  'south korea': 'Corea del Sur',
+  'republic of korea': 'Corea del Sur',
+  'australia': 'Australia',
+  'bolivia': 'Bolivia',
+  'benin': 'Benín',
+  'burkina faso': 'Burkina Faso'
+};
+
+// Competiciones a consultar en la API de ESPN (codigo ESPN: etiqueta)
+const COMPETENCIA_ESPN = [
+  ['uefa.nations', 'UEFA Nations League'],
+  ['fifa.friendly', 'Amistoso'],
+  ['fifa.world', 'Mundial'],
+  ['concaf.nations', 'Concacaf Nations League']
+];
+
+function traducirEquipo(nombreEspn) {
+  const clave = normalizar(nombreEspn);
+  if (TRADUCCION_EQUIPOS[clave]) return TRADUCCION_EQUIPOS[clave];
+  return nombreEspn;
+}
+
+async function traerJson(url) {
+  const respuesta = await fetch(url);
+  if (!respuesta.ok) throw new Error('HTTP ' + respuesta.status);
+  return respuesta.json();
+}
+
+async function descargarPartidosFecha(desde, hasta) {
+  // La API no acepta rangos: se consulta dia por dia
+  const partidos = [];
+  const vistos = new Set();
+  const inicio = new Date(desde + 'T00:00:00Z');
+  const fin = new Date(hasta + 'T00:00:00Z');
+  for (let d = new Date(inicio); d <= fin; d.setUTCDate(d.getUTCDate() + 1)) {
+    const fecha = d.toISOString().slice(0, 10);
+    for (const [codigo, etiqueta] of COMPETENCIA_ESPN) {
+      try {
+        const j = await traerJson('https://site.api.espn.com/apis/site/v2/sports/soccer/' + codigo + '/scoreboard?dates=' + fecha.replace(/-/g, ''));
+        for (const evento of (j.events || [])) {
+          if (vistos.has(evento.id)) continue;
+          vistos.add(evento.id);
+          const c = evento.competitions[0];
+          const local = c.competitors.find((x) => x.homeAway === 'home');
+          const visitante = c.competitors.find((x) => x.homeAway === 'away');
+          if (!local || !visitante) continue;
+          partidos.push({
+            idEspn: evento.id,
+            fecha,
+            competencia: etiqueta,
+            local: traducirEquipo(local.team.displayName),
+            visitante: traducirEquipo(visitante.team.displayName),
+            estado: evento.status ? evento.status.type.state : 'pre',
+            golesLocal: local.score ? parseInt(local.score, 10) : null,
+            golesVisitante: visitante.score ? parseInt(visitante.score, 10) : null
+          });
+        }
+      } catch (e) {
+        // Un dia o competencia sin datos no detiene la descarga
+      }
+    }
+  }
+  return partidos;
+}
+
+async function descargarEstadisticasPartido(idEspn, codigoCompetencia) {
+  try {
+    const j = await traerJson('https://site.api.espn.com/apis/site/v2/sports/soccer/' + codigoCompetencia + '/summary?event=' + idEspn);
+    const box = j.boxscore;
+    if (!box || !box.teams) return null;
+    const datos = {};
+    for (const t of box.teams) {
+      const st = {};
+      for (const s of (t.statistics || [])) st[s.name] = s.displayValue;
+      datos[traducirEquipo(t.team.displayName)] = {
+        goles: parseInt(st.goals || 0, 10) || 0,
+        amarillas: parseFloat(st.yellowCards) || 0,
+        corners: parseFloat(st.corners) || 0,
+        offsides: parseFloat(st.offsides) || 0
+      };
+    }
+    return datos;
+  } catch (e) {
+    return null;
+  }
+}
+
+function actualizarPromediosConResultado(equipo, stats) {
+  if (!equipos[equipo]) return;
+  const e = equipos[equipo];
+  const partidas = (e.partidos || 0) + 1;
+  e.partidos = partidas;
+  e.ataque = ((e.ataque * (partidas - 1)) + stats.goles) / partidas;
+  e.defensa = ((e.defensa * (partidas - 1)) + stats.golesEnContra) / partidas;
+  e.amarillas = ((e.amarillas * (partidas - 1)) + stats.amarillas) / partidas;
+  e.corners = ((e.corners * (partidas - 1)) + stats.corners) / partidas;
+  e.offsides = ((e.offsides * (partidas - 1)) + stats.offsides) / partidas;
+}
+
+async function actualizarDesdeEspn() {
+  console.log('\n=== ACTUALIZAR DESDE ESPN ===');
+  console.log('Descarga partidos y estadisticas reales de la fecha FIFA desde la API publica de ESPN.');
+  console.log('Necesita internet. Puede demorar unos segundos por dia consultado.\n');
+
+  const desde = await preguntar('Fecha inicial (AAAA-MM-DD, Enter = 2026-09-24): ');
+  const hasta = await preguntar('Fecha final (AAAA-MM-DD, Enter = 2026-10-06): ');
+  const d = desde || '2026-09-24';
+  const h = hasta || '2026-10-06';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{4}-\d{2}-\d{2}$/.test(h)) {
+    console.log('Fechas invalidas. Usa el formato AAAA-MM-DD.');
+    return;
+  }
+
+  console.log('\nDescargando partidos entre el ' + d + ' y el ' + h + '...');
+  let partidosDescargados;
+  try {
+    partidosDescargados = await descargarPartidosFecha(d, h);
+  } catch (e) {
+    console.log('Error de conexion: ' + e.message);
+    console.log('Verifica que tengas internet en el celular e intenta de nuevo.');
+    return;
+  }
+
+  if (partidosDescargados.length === 0) {
+    console.log('No se encontraron partidos en ese rango.');
+    return;
+  }
+
+  console.log('Partidos encontrados: ' + partidosDescargados.length + '\n');
+  partidosDescargados.forEach((p) => {
+    const marcador = p.estado === 'post' ? ('  [' + p.golesLocal + '-' + p.golesVisitante + ']') : '';
+    console.log('  ' + p.fecha + ' | ' + p.competencia + ': ' + p.local + ' vs ' + p.visitante + marcador);
+  });
+
+  const confirmar = await preguntar('\nReemplazar la lista de partidos del bot por estos? (s/n): ');
+  if (confirmar.toLowerCase() !== 's') {
+    console.log('Lista de partidos sin cambios.');
+    return;
+  }
+
+  let nuevoId = 1;
+  partidos = partidosDescargados.map((p) => ({
+    id: nuevoId++,
+    fecha: p.fecha,
+    competencia: p.competencia,
+    local: p.local,
+    visitante: p.visitante
+  }));
+
+  const codigoPorEtiqueta = {};
+  COMPETENCIA_ESPN.forEach(([codigo, etiqueta]) => { codigoPorEtiqueta[etiqueta] = codigo; });
+
+  const jugados = partidosDescargados.filter((p) => p.estado === 'post');
+  console.log('\nActualizando estadisticas con ' + jugados.length + ' partidos finalizados...');
+  let actualizados = 0;
+  for (const p of jugados) {
+    const codigo = codigoPorEtiqueta[p.competencia];
+    if (!codigo) continue;
+    const stats = await descargarEstadisticasPartido(p.idEspn, codigo);
+    if (!stats || !stats[p.local] || !stats[p.visitante]) continue;
+    if (!equipos[p.local] || !equipos[p.visitante]) continue;
+
+    const statsLocal = stats[p.local];
+    const statsVisitante = stats[p.visitante];
+    statsLocal.golesEnContra = statsVisitante.goles;
+    statsVisitante.golesEnContra = statsLocal.goles;
+
+    actualizarPromediosConResultado(p.local, statsLocal);
+    actualizarPromediosConResultado(p.visitante, statsVisitante);
+    actualizados += 2;
+  }
+
+  guardarDatos();
+  console.log('Listo. ' + actualizados + ' estadisticas de equipo actualizadas.');
+  console.log('Partidos y promedios guardados en ' + ARCHIVO_DATOS);
+  const ver = await preguntar('Ver la tabla de estadisticas actualizada? (s/n): ');
+  if (ver.toLowerCase() === 's') verEquipos();
+}
+
 function guardarDatos() {
   try {
     fs.writeFileSync(ARCHIVO_DATOS, JSON.stringify({ equipos, partidos }, null, 2), 'utf8');
@@ -382,7 +583,10 @@ function mostrarAyuda() {
   console.log('  5. Cuanto mas precisas sean las estadisticas (opcion 5), mejores seran');
   console.log('     las predicciones. Actualizalas despues de cada fecha FIFA.');
   console.log('  6. Tus cambios se guardan automaticamente en datos-selecciones.json.');
-  console.log('  7. Esto es una herramienta estadistica de estudio: no garantiza');
+  console.log('  7. Actualizar desde ESPN: descarga partidos y estadisticas reales desde');
+  console.log('     la API publica de ESPN (necesita internet). Actualiza los promedios');
+  console.log('     de cada seleccion con los resultados reales de los partidos jugados.');
+  console.log('  8. Esto es una herramienta estadistica de estudio: no garantiza');
   console.log('     resultados y no es asesoramiento de apuestas.');
 }
 
@@ -396,15 +600,39 @@ function mostrarMenu() {
   console.log('4. Ver estadisticas de equipos');
   console.log('5. Editar estadisticas de un equipo');
   console.log('6. Agregar partido');
-  console.log('7. Ayuda / como funciona');
-  console.log('8. Salir');
+  console.log('7. Actualizar desde ESPN (internet)');
+  console.log('8. Ayuda / como funciona');
+  console.log('9. Salir');
+}
+
+const ACCIONES = {
+  '1': verPartidos,
+  '2': predecirDeFecha,
+  '3': predecirPersonalizado,
+  '4': verEquipos,
+  '5': editarEquipo,
+  '6': agregarPartido,
+  '7': actualizarDesdeEspn,
+  '8': mostrarAyuda,
+  '9': null
+};
+
+async function ejecutarOpcion(opcion) {
+  if (opcion === '9') return true;
+  const accion = ACCIONES[opcion];
+  if (!accion) {
+    console.log('Opcion no valida. Escribe del 1 al 9.');
+    return false;
+  }
+  await accion();
+  return false;
 }
 
 async function main() {
   cargarDatos();
   console.log('\nBot de analisis y prediccion de partidos de selecciones.');
   console.log('Fecha FIFA cargada: 24 de septiembre al 6 de octubre de 2026.');
-  console.log('Escribe 7 para ver como funciona el bot.');
+  console.log('Escribe 8 para ver como funciona el bot.');
 
   rl.on('SIGINT', () => {
     guardarDatos();
@@ -416,17 +644,7 @@ async function main() {
   while (!salir) {
     mostrarMenu();
     const opcion = await preguntar('Opcion: ');
-    switch (opcion) {
-      case '1': verPartidos(); break;
-      case '2': await predecirDeFecha(); break;
-      case '3': await predecirPersonalizado(); break;
-      case '4': verEquipos(); break;
-      case '5': await editarEquipo(); break;
-      case '6': await agregarPartido(); break;
-      case '7': mostrarAyuda(); break;
-      case '8': salir = true; break;
-      default: console.log('Opcion no valida. Escribe del 1 al 8.');
-    }
+    salir = await ejecutarOpcion(opcion);
   }
   guardarDatos();
   console.log('Datos guardados en ' + ARCHIVO_DATOS + '. Hasta la proxima.');
