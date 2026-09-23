@@ -59,6 +59,7 @@ const PARTIDOS_BASE = [
 
 let equipos = {};
 let partidos = [];
+const idEspnPorEquipo = {};
 
 function cargarDatos() {
   equipos = Object.assign({}, EQUIPOS_BASE);
@@ -68,6 +69,7 @@ function cargarDatos() {
       const guardado = JSON.parse(fs.readFileSync(ARCHIVO_DATOS, 'utf8'));
       if (guardado.equipos) equipos = Object.assign(equipos, guardado.equipos);
       if (Array.isArray(guardado.partidos)) partidos = guardado.partidos;
+      if (guardado.idEspnPorEquipo) Object.assign(idEspnPorEquipo, guardado.idEspnPorEquipo);
     } catch (e) {
       console.log('No se pudo leer datos-selecciones.json, se usan los datos base.');
     }
@@ -119,7 +121,7 @@ function traducirEquipo(nombreEspn) {
 }
 
 function asegurarEquipo(nombre) {
-  // Crea el equipo con promedios genericos si no existe, y devuelve su nombre interno
+  // Crea el equipo si no existe y devuelve su nombre interno
   const clave = buscarEquipo(nombre);
   if (clave) return clave;
   const nombreFinal = TRADUCCION_EQUIPOS[normalizar(nombre)] || nombre;
@@ -129,8 +131,87 @@ function asegurarEquipo(nombre) {
   return nombreFinal;
 }
 
+async function calcularPromediosReales(nombreEquipo) {
+  // Descarga los ultimos partidos reales del equipo desde ESPN y calcula promedios
+  const idEspn = idEspnPorEquipo[nombreEquipo];
+  if (!idEspn) return null;
+  let historial = [];
+  for (const [codigo] of COMPETENCIA_ESPN) {
+    try {
+      const j = await traerJson('https://site.api.espn.com/apis/site/v2/sports/soccer/' + codigo + '/teams/' + idEspn + '/schedule?limit=40');
+      const evs = (j.events || []).filter((e) => {
+        if (!e.competitions || !e.competitions[0]) return false;
+        const c = e.competitions[0];
+        const h = c.competitors.find((x) => x.homeAway === 'home');
+        const a = c.competitors.find((x) => x.homeAway === 'away');
+        const post = c.status && c.status.type && c.status.type.state === 'post';
+        return post && h && a && h.score && a.score && typeof h.score.value === 'number' && typeof a.score.value === 'number';
+      });
+      historial = historial.concat(evs.map((e) => ({ id: e.id, comp: e.competitions[0], codigo })));;
+    } catch (e) {
+      // competencia sin historial para este equipo
+    }
+  }
+  if (historial.length === 0) return null;
+
+  // Quitar duplicados y quedarse con los 10 mas recientes
+  const vistos = new Set();
+  const unicos = historial.filter((p) => {
+    if (vistos.has(p.id)) return false;
+    vistos.add(p.id);
+    return true;
+  });
+  const recientes = unicos.slice(0, 10);
+
+  const acumulado = { aFavor: 0, enContra: 0, amarillas: 0, corners: 0, offsides: 0, conStats: 0 };
+  for (const p of recientes) {
+    const h = p.comp.competitors.find((x) => x.homeAway === 'home');
+    const a = p.comp.competitors.find((x) => x.homeAway === 'away');
+    const soyLocal = String(h.team.id) === String(idEspn);
+    const miGoles = soyLocal ? h.score.value : a.score.value;
+    const golesRival = soyLocal ? a.score.value : h.score.value;
+    acumulado.aFavor += miGoles;
+    acumulado.enContra += golesRival;
+
+    if (p.codigo) {
+      const stats = await descargarEstadisticasPartido(p.id, p.codigo);
+      if (stats && stats[nombreEquipo]) {
+        acumulado.amarillas += stats[nombreEquipo].amarillas;
+        acumulado.corners += stats[nombreEquipo].corners;
+        acumulado.offsides += stats[nombreEquipo].offsides;
+        acumulado.conStats++;
+      }
+    }
+  }
+
+  const n = recientes.length;
+  return {
+    ataque: acumulado.aFavor / n,
+    defensa: acumulado.enContra / n,
+    amarillas: acumulado.conStats > 0 ? acumulado.amarillas / acumulado.conStats : null,
+    corners: acumulado.conStats > 0 ? acumulado.corners / acumulado.conStats : null,
+    offsides: acumulado.conStats > 0 ? acumulado.offsides / acumulado.conStats : null,
+    partidos: n
+  };
+}
+
+async function recalcularEquipo(nombreEquipo, mantenerSiFalta = true) {
+  const stats = await calcularPromediosReales(nombreEquipo);
+  if (!stats) return false;
+  const anterior = equipos[nombreEquipo] || { amarillas: 2.2, corners: 4.8, offsides: 2.1 };
+  equipos[nombreEquipo] = {
+    ataque: stats.ataque,
+    defensa: stats.defensa,
+    amarillas: stats.amarillas !== null ? stats.amarillas : (mantenerSiFalta ? anterior.amarillas : null),
+    corners: stats.corners !== null ? stats.corners : (mantenerSiFalta ? anterior.corners : null),
+    offsides: stats.offsides !== null ? stats.offsides : (mantenerSiFalta ? anterior.offsides : null),
+    partidos: stats.partidos
+  };
+  return true;
+}
+
 async function traerJson(url) {
-  const respuesta = await fetch(url);
+  const respuesta = await fetch(url, { signal: AbortSignal.timeout(15000) });
   if (!respuesta.ok) throw new Error('HTTP ' + respuesta.status);
   return respuesta.json();
 }
@@ -157,6 +238,8 @@ async function descargarPartidosFecha(desde, hasta) {
           const local = c.competitors.find((x) => x.homeAway === 'home');
           const visitante = c.competitors.find((x) => x.homeAway === 'away');
           if (!local || !visitante) continue;
+          idEspnPorEquipo[traducirEquipo(local.team.displayName)] = local.team.id;
+          idEspnPorEquipo[traducirEquipo(visitante.team.displayName)] = visitante.team.id;
           partidos.push({
             idEspn: evento.id,
             fecha,
@@ -182,18 +265,25 @@ async function descargarEstadisticasPartido(idEspn, codigoCompetencia) {
     const j = await traerJson('https://site.api.espn.com/apis/site/v2/sports/soccer/' + codigoCompetencia + '/summary?event=' + idEspn);
     const box = j.boxscore;
     if (!box || !box.teams) return null;
+    let tieneAlguna = false;
     const datos = {};
     for (const t of box.teams) {
       const st = {};
       for (const s of (t.statistics || [])) st[s.name] = s.displayValue;
+      const lista = t.statistics || [];
+      if (lista.length > 0) tieneAlguna = true;
+      const valor = (nombre) => {
+        const v = parseFloat(st[nombre]);
+        return isNaN(v) ? null : v;
+      };
       datos[traducirEquipo(t.team.displayName)] = {
-        goles: parseInt(st.goals || 0, 10) || 0,
-        amarillas: parseFloat(st.yellowCards) || 0,
-        corners: parseFloat(st.corners) || 0,
-        offsides: parseFloat(st.offsides) || 0
+        goles: valor('goals') || 0,
+        amarillas: valor('yellowCards'),
+        corners: valor('corners'),
+        offsides: valor('offsides')
       };
     }
-    return datos;
+    return tieneAlguna ? datos : null;
   } catch (e) {
     return null;
   }
@@ -209,6 +299,40 @@ function actualizarPromediosConResultado(equipo, stats) {
   e.amarillas = ((e.amarillas * (partidas - 1)) + stats.amarillas) / partidas;
   e.corners = ((e.corners * (partidas - 1)) + stats.corners) / partidas;
   e.offsides = ((e.offsides * (partidas - 1)) + stats.offsides) / partidas;
+}
+
+async function recalcularDesdeEspn() {
+  console.log('\n=== RECALCULAR EQUIPO CON DATOS REALES ===');
+  console.log('Descarga los ultimos 10 partidos reales del equipo desde ESPN');
+  console.log('y recalcula sus promedios (goles, amarillas, corners, offsides).\n');
+  verEquipos();
+  const nombre = await preguntar('\nEquipo a recalcular: ');
+  const clave = asegurarEquipo(nombre);
+  if (!idEspnPorEquipo[clave]) {
+    console.log('No hay ID de ESPN para ese equipo. Ejecuta primero la opcion 7');
+    console.log('(Actualizar desde ESPN) para que el bot conozca al equipo.');
+    return;
+  }
+  console.log('Descargando historial de ' + clave + '... (unos segundos)');
+  const ok = await recalcularEquipo(clave);
+  if (!ok) {
+    console.log('No se pudo calcular: sin partidos finalizados en ESPN para ese equipo.');
+    return;
+  }
+  guardarDatos();
+  const e = equipos[clave];
+  console.log('\nPromedios reales de ' + clave + ' (ultimos ' + e.partidos + ' partidos de ESPN):');
+  console.log('  Ataque (goles a favor): ' + num(e.ataque));
+  console.log('  Defensa (goles en contra): ' + num(e.defensa));
+  if (e.amarillas === null || e.corners === null || e.offsides === null) {
+    console.log('  Nota: ESPN no tiene tarjetas/corners/offsides de estos partidos;');
+    console.log('  se mantienen los valores previos. Podras afinarlos con la opcion 5.');
+  } else {
+    console.log('  Amarillas: ' + num(e.amarillas));
+    console.log('  Corners: ' + num(e.corners));
+    console.log('  Offsides: ' + num(e.offsides));
+  }
+  console.log('Guardado en ' + ARCHIVO_DATOS);
 }
 
 async function actualizarDesdeEspn() {
@@ -308,7 +432,7 @@ async function actualizarDesdeEspn() {
 
 function guardarDatos() {
   try {
-    fs.writeFileSync(ARCHIVO_DATOS, JSON.stringify({ equipos, partidos }, null, 2), 'utf8');
+    fs.writeFileSync(ARCHIVO_DATOS, JSON.stringify({ equipos, partidos, idEspnPorEquipo }, null, 2), 'utf8');
   } catch (e) {
     console.log('No se pudieron guardar los datos: ' + e.message);
   }
@@ -632,8 +756,9 @@ function mostrarMenu() {
   console.log('5. Editar estadisticas de un equipo');
   console.log('6. Agregar partido');
   console.log('7. Actualizar desde ESPN (internet)');
-  console.log('8. Ayuda / como funciona');
-  console.log('9. Salir');
+  console.log('8. Recalcular un equipo con datos reales');
+  console.log('9. Ayuda / como funciona');
+  console.log('0. Salir');
 }
 
 const ACCIONES = {
@@ -644,15 +769,16 @@ const ACCIONES = {
   '5': editarEquipo,
   '6': agregarPartido,
   '7': actualizarDesdeEspn,
-  '8': mostrarAyuda,
-  '9': null
+  '8': recalcularDesdeEspn,
+  '9': mostrarAyuda,
+  '0': null
 };
 
 async function ejecutarOpcion(opcion) {
-  if (opcion === '9') return true;
+  if (opcion === '0') return true;
   const accion = ACCIONES[opcion];
   if (!accion) {
-    console.log('Opcion no valida. Escribe del 1 al 9.');
+    console.log('Opcion no valida. Escribe del 1 al 9, o 0 para salir.');
     return false;
   }
   await accion();
@@ -663,7 +789,7 @@ async function main() {
   cargarDatos();
   console.log('\nBot de analisis y prediccion de partidos de selecciones.');
   console.log('Fecha FIFA cargada: 24 de septiembre al 6 de octubre de 2026.');
-  console.log('Escribe 8 para ver como funciona el bot.');
+  console.log('Escribe 9 para ver como funciona el bot.');
 
   rl.on('SIGINT', () => {
     guardarDatos();
