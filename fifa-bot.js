@@ -130,8 +130,12 @@ async function descargarPartidosFecha(desde, hasta) {
   const vistos = new Set();
   const inicio = new Date(desde + 'T00:00:00Z');
   const fin = new Date(hasta + 'T00:00:00Z');
+  const totalDias = Math.round((fin - inicio) / 86400000) + 1;
+  let diaActual = 0;
   for (let d = new Date(inicio); d <= fin; d.setUTCDate(d.getUTCDate() + 1)) {
+    diaActual++;
     const fecha = d.toISOString().slice(0, 10);
+    process.stdout.write('  Consultando ' + fecha + ' (dia ' + diaActual + ' de ' + totalDias + ')...\r');
     for (const [codigo, etiqueta] of COMPETENCIA_ESPN) {
       try {
         const j = await traerJson('https://site.api.espn.com/apis/site/v2/sports/soccer/' + codigo + '/scoreboard?dates=' + fecha.replace(/-/g, ''));
@@ -158,6 +162,7 @@ async function descargarPartidosFecha(desde, hasta) {
       }
     }
   }
+  process.stdout.write('\n');
   return partidos;
 }
 
@@ -208,6 +213,19 @@ async function actualizarDesdeEspn() {
     console.log('Fechas invalidas. Usa el formato AAAA-MM-DD.');
     return;
   }
+
+  const dias = Math.round((new Date(h + 'T00:00:00Z') - new Date(d + 'T00:00:00Z')) / 86400000) + 1;
+  if (dias <= 0) {
+    console.log('La fecha final debe ser igual o posterior a la inicial.');
+    return;
+  }
+  if (dias > 45) {
+    console.log('El rango es muy largo: ' + dias + ' dias (maximo 45).');
+    console.log('Las fechas FIFA duran entre 6 y 16 dias. Usa un rango mas corto,');
+    console.log('por ejemplo 2026-09-24 a 2026-10-06.');
+    return;
+  }
+  console.log('Se consultaran ' + dias + ' dias. Demora unos segundos por dia.');
 
   console.log('\nDescargando partidos entre el ' + d + ' y el ' + h + '...');
   let partidosDescargados;
