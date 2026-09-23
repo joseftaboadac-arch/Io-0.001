@@ -118,6 +118,17 @@ function traducirEquipo(nombreEspn) {
   return nombreEspn;
 }
 
+function asegurarEquipo(nombre) {
+  // Crea el equipo con promedios genericos si no existe, y devuelve su nombre interno
+  const clave = buscarEquipo(nombre);
+  if (clave) return clave;
+  const nombreFinal = TRADUCCION_EQUIPOS[normalizar(nombre)] || nombre;
+  if (!equipos[nombreFinal]) {
+    equipos[nombreFinal] = { ataque: 1.2, defensa: 1.3, amarillas: 2.2, corners: 4.8, offsides: 2.1, partidos: 0 };
+  }
+  return nombreFinal;
+}
+
 async function traerJson(url) {
   const respuesta = await fetch(url);
   if (!respuesta.ok) throw new Error('HTTP ' + respuesta.status);
@@ -150,8 +161,8 @@ async function descargarPartidosFecha(desde, hasta) {
             idEspn: evento.id,
             fecha,
             competencia: etiqueta,
-            local: traducirEquipo(local.team.displayName),
-            visitante: traducirEquipo(visitante.team.displayName),
+            local: asegurarEquipo(local.team.displayName),
+            visitante: asegurarEquipo(visitante.team.displayName),
             estado: evento.status ? evento.status.type.state : 'pre',
             golesLocal: local.score ? parseInt(local.score, 10) : null,
             golesVisitante: visitante.score ? parseInt(visitante.score, 10) : null
@@ -274,6 +285,8 @@ async function actualizarDesdeEspn() {
     if (!codigo) continue;
     const stats = await descargarEstadisticasPartido(p.idEspn, codigo);
     if (!stats || !stats[p.local] || !stats[p.visitante]) continue;
+    asegurarEquipo(p.local);
+    asegurarEquipo(p.visitante);
     if (!equipos[p.local] || !equipos[p.visitante]) continue;
 
     const statsLocal = stats[p.local];
@@ -481,8 +494,8 @@ async function predecirDeFecha() {
     console.log('Partido no encontrado.');
     return;
   }
-  const local = equipos[partido.local];
-  const visitante = equipos[partido.visitante];
+  const local = equipos[asegurarEquipo(partido.local)];
+  const visitante = equipos[asegurarEquipo(partido.visitante)];
   if (!local || !visitante) {
     console.log('Faltan estadisticas de uno de los equipos. Actualizalas en la opcion 5.');
     return;
