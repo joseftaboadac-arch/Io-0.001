@@ -18,10 +18,31 @@ console.log('Descargando partidos reales del dia...\n');
 dataUpdater.updateFromLocalFiles().then(() => {
   return dataUpdater.updateFromEspn(null);
 }).then(result => {
+  return dataUpdater.updateRankingsFromEspn().then(() => result);
+}).then(result => {
   if (result && result.success) {
     console.log(`\nDatos al dia: ${result.matches} partidos, ${result.newPlayers} jugadores nuevos\n`);
   } else {
     console.log('\nNo se pudo descargar de Internet. Usando datos guardados (si existen).\n');
+  }
+
+  // Resumen de los partidos mas interesantes del dia
+  const highlights = analyzer.getDayHighlights(5);
+  if (highlights.length > 0) {
+    console.log('=== PARTIDOS DESTACADOS DE HOY ===\n');
+    const confidenceLabels = { high: 'ALTA', medium: 'media', low: 'baja' };
+
+    highlights.forEach((h, index) => {
+      const names = h.match.getPlayerNames();
+      const tournament = h.match.tournament;
+      console.log(`${index + 1}. ${tournament}`);
+      console.log(`   ${names.player1} vs ${names.player2}`);
+      console.log(`   Favorito: ${h.favorite} (${h.player1Probability} / ${h.player2Probability}) - Confianza ${confidenceLabels[h.confidence]}`);
+      if (h.predictedAces) console.log(`   Aces esperados: ${h.predictedAces} - Juegos esperados: ${h.predictedGames}`);
+      console.log('');
+    });
+
+    console.log('Analizalos en el menu: 2 (Partidos) > 3 (Partidos futuros) > elige numero > 1 (Analizar)\n');
   }
 
   // Configurar la CLI (igual que src/index.js)

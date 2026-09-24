@@ -692,6 +692,52 @@ class TennisAnalyzer {
   /**
    * Carga datos de ejemplo para demostración
    */
+  /**
+   * Devuelve los partidos del dia mas interesantes, ordenados por confianza de prediccion
+   */
+  getDayHighlights(limit = 5) {
+    const upcoming = this.getUpcomingMatches();
+    const highlights = [];
+    const confidenceOrder = { high: 3, medium: 2, low: 1 };
+
+    for (const match of upcoming) {
+      if (!match.player1 || !match.player2) {
+        const p1 = this.getPlayer(match.player1Id);
+        const p2 = this.getPlayer(match.player2Id);
+        if (p1 && p2) {
+          match.setPlayers(p1, p2);
+        } else {
+          continue;
+        }
+      }
+
+      try {
+        const predictions = this.predictMatchOutcome(match.player1, match.player2, match.surface);
+        const probDiff = Math.abs(parseFloat(predictions.matchWinner.player1Probability) - parseFloat(predictions.matchWinner.player2Probability));
+
+        highlights.push({
+          match,
+          favorite: predictions.matchWinner.favorite,
+          player1Probability: predictions.matchWinner.player1Probability,
+          player2Probability: predictions.matchWinner.player2Probability,
+          confidence: predictions.matchWinner.confidence,
+          probDiff,
+          predictedAces: predictions.totalAces ? predictions.totalAces.predictedAces : null,
+          predictedGames: predictions.totalGames ? predictions.totalGames.predictedGames : null
+        });
+      } catch (e) {
+        continue;
+      }
+    }
+
+    highlights.sort((a, b) => {
+      if (b.probDiff !== a.probDiff) return b.probDiff - a.probDiff;
+      return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
+    });
+
+    return highlights.slice(0, limit);
+  }
+
   loadSampleData() {
     // Jugadores top en piso duro
     const topPlayers = [

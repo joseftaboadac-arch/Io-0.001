@@ -248,6 +248,54 @@ class DataUpdater {
   }
 
   /**
+   * Descarga el ranking ATP actual desde ESPN y lo aplica a los jugadores
+   */
+  async updateRankingsFromEspn() {
+    const url = 'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/rankings';
+
+    console.log('Descargando ranking ATP de ESPN...');
+
+    let ranks;
+    try {
+      const response = await axios.get(url, { timeout: 15000 });
+      ranks = (response.data.rankings && response.data.rankings[0] && response.data.rankings[0].ranks) || [];
+    } catch (error) {
+      console.error('Error al descargar ranking:', error.message);
+      return { success: false, updated: 0 };
+    }
+
+    if (ranks.length === 0) {
+      console.log('No se encontraron rankings.');
+      return { success: false, updated: 0 };
+    }
+
+    let updatedCount = 0;
+
+    for (const rank of ranks) {
+      if (!rank.athlete) continue;
+      const athleteId = rank.athlete.id;
+      const position = rank.current;
+      const name = rank.athlete.displayName;
+
+      // Buscar por id de ESPN o por nombre
+      let player = this.analyzer.getPlayer(`espn_${athleteId}`);
+      if (!player) {
+        player = this.analyzer.getAllPlayers().find(p =>
+          p.name.toLowerCase() === name.toLowerCase()
+        );
+      }
+
+      if (player) {
+        player.ranking = position;
+        updatedCount++;
+      }
+    }
+
+    console.log(`Ranking aplicado a ${updatedCount} jugadores`);
+    return { success: true, updated: updatedCount };
+  }
+
+  /**
    * Actualiza desde APIs externas
    */
   async updateFromApis() {
