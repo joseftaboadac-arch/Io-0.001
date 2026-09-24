@@ -208,6 +208,9 @@ class TennisAnalyzer {
     // Predicción de over/under juegos
     const gamesPrediction = this.predictTotalGames(player1, player2, surface);
     
+    // Predicción de aces totales
+    const acesPrediction = this.predictTotalAces(player1, player2, surface);
+    
     return {
       matchWinner: {
         player1Probability: p1Probability.toFixed(2) + '%',
@@ -220,9 +223,10 @@ class TennisAnalyzer {
       totalSets: setsPrediction,
       tiebreak: tiebreakPrediction,
       totalGames: gamesPrediction,
+      totalAces: acesPrediction,
       firstSetWinner: {
-        player1Probability: (p1Score / totalScore * 100 * 1.1).toFixed(2) + '%', // Ajuste para primer set
-        player2Probability: (p2Score / totalScore * 100 * 1.1).toFixed(2) + '%'
+        player1Probability: p1Probability.toFixed(2) + '%',
+        player2Probability: p2Probability.toFixed(2) + '%'
       }
     };
   }
@@ -359,6 +363,35 @@ class TennisAnalyzer {
   }
   
   /**
+   * Predice el nómero total de aces del partido
+   */
+  predictTotalAces(player1, player2, surface = SURFACES.HARD) {
+    const p1Aces = player1.getSurfaceStats(surface)[STAT_CATEGORIES.AVERAGE_ACES] || 0;
+    const p2Aces = player2.getSurfaceStats(surface)[STAT_CATEGORIES.AVERAGE_ACES] || 0;
+    
+    // Si no hay datos por jugador, usar promedio histórico de piso duro
+    const baseline = 9.5;
+    let p1Expected = p1Aces > 0 ? p1Aces : baseline / 2;
+    let p2Expected = p2Aces > 0 ? p2Aces : baseline / 2;
+    
+    // Ajuste por número de sets esperados: 2 sets ~ 2.6 servings, 3 sets ~ 3.0
+    const setsFactor = 2.8 / 3;
+    p1Expected *= setsFactor;
+    p2Expected *= setsFactor;
+    
+    const predictedAces = p1Expected + p2Expected;
+    
+    return {
+      predictedAces: predictedAces.toFixed(1),
+      player1Aces: p1Expected.toFixed(1),
+      player2Aces: p2Expected.toFixed(1),
+      overProbability: predictedAces > baseline ? '60%' : '40%',
+      underProbability: predictedAces > baseline ? '40%' : '60%',
+      line: baseline
+    };
+  }
+  
+  /**
    * Genera recomendaciones de apuestas
    */
   generateRecommendations(player1, player2, surface = SURFACES.HARD) {
@@ -412,6 +445,29 @@ class TennisAnalyzer {
         reason: `Diferencia significativa en probabilidad del primer set`,
         recommendedStake: 'low'
       });
+    }
+    
+    // Recomendación para over/under aces
+    if (predictions.totalAces) {
+      const predictedAces = parseFloat(predictions.totalAces.predictedAces);
+      const acesLine = predictions.totalAces.line;
+      if (predictedAces >= acesLine) {
+        recommendations.push({
+          betType: BET_TYPES.ACE_COUNT,
+          selection: { line: acesLine, direction: 'over' },
+          confidence: predictedAces > acesLine + 3 ? 'medium' : 'low',
+          reason: `Se predicen ${predictedAces.toFixed(1)} aces totales`,
+          recommendedStake: 'low'
+        });
+      } else {
+        recommendations.push({
+          betType: BET_TYPES.ACE_COUNT,
+          selection: { line: acesLine, direction: 'under' },
+          confidence: acesLine - predictedAces > 3 ? 'medium' : 'low',
+          reason: `Se predicen ${predictedAces.toFixed(1)} aces totales`,
+          recommendedStake: 'low'
+        });
+      }
     }
     
     // Recomendación para tie-break
@@ -718,6 +774,33 @@ class TennisAnalyzer {
         status: 'upcoming',
         player1Id: this.getAllPlayers()[6].id,
         player2Id: this.getAllPlayers()[7].id
+      },
+      {
+        tournament: TOURNAMENTS.SHANGHAI,
+        round: 'QF',
+        surface: SURFACES.HARD,
+        date: new Date(Date.now() + 86400000 * 3).toISOString(),
+        status: 'upcoming',
+        player1Id: this.getAllPlayers()[0].id,
+        player2Id: this.getAllPlayers()[3].id
+      },
+      {
+        tournament: TOURNAMENTS.BEIJING,
+        round: 'SF',
+        surface: SURFACES.HARD,
+        date: new Date(Date.now() + 86400000 * 4).toISOString(),
+        status: 'upcoming',
+        player1Id: this.getAllPlayers()[1].id,
+        player2Id: this.getAllPlayers()[2].id
+      },
+      {
+        tournament: 'Tokyo Open',
+        round: 'QF',
+        surface: SURFACES.HARD,
+        date: new Date(Date.now() + 86400000 * 5).toISOString(),
+        status: 'upcoming',
+        player1Id: this.getAllPlayers()[4].id,
+        player2Id: this.getAllPlayers()[8].id
       }
     ];
     

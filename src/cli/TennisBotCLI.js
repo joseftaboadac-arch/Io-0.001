@@ -309,4 +309,19 @@ class TennisBotCLI {
       }
     });
   }
+
+  prompt(question, callback) {
+    if (!this.rl) {
+      this.rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        prompt: '> '
+      });
+    }
+    this.rl.question(question, (input) => {
+      callback(input);
+    });
+  }
 }
+
+module.exports = TennisBotCLI;

@@ -312,6 +312,14 @@ class TennisBotCLI_Part2 {
     console.log('\nTotal de juegos:');
     console.log('   Prediccion: ' + predictions.totalGames.predictedGames + ' juegos');
     
+    if (predictions.totalAces) {
+      console.log('\nTotal de aces:');
+      console.log('   ' + analysis.player1.name + ': ' + predictions.totalAces.player1Aces + ' aces');
+      console.log('   ' + analysis.player2.name + ': ' + predictions.totalAces.player2Aces + ' aces');
+      console.log('   Prediccion: ' + predictions.totalAces.predictedAces + ' aces totales');
+      console.log('   Linea recomendada: ' + predictions.totalAces.line);
+    }
+    
     console.log('\nRECOMENDACIONES:');
     const recommendations = analysis.recommendations;
     
@@ -342,7 +350,9 @@ class TennisBotCLI_Part2 {
       [BET_TYPES.CORRECT_SCORE]: 'Resultado exacto',
       [BET_TYPES.FIRST_SET_WINNER]: 'Ganador del primer set',
       [BET_TYPES.TOTAL_SETS]: 'Total de sets',
-      [BET_TYPES.TOTAL_GAMES]: 'Total de juegos'
+      [BET_TYPES.TOTAL_GAMES]: 'Total de juegos',
+      [BET_TYPES.ACE_COUNT]: 'Total de aces',
+      [BET_TYPES.TIEBREAK_WINNER]: 'Ganador del tie-break'
     };
     
     return betTypeNames[betType] || betType;
