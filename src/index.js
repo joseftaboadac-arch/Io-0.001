@@ -57,6 +57,7 @@ cli.configureUser = cliPart4.configureUser.bind(cliPart4);
 cli.configureAutoUpdate = cliPart4.configureAutoUpdate.bind(cliPart4);
 cli.showHelp = cliPart4.showHelp.bind(cliPart4);
 cli.exit = cliPart4.exit.bind(cliPart4);
+cli.updateFromInternet = cliPart4.updateFromInternet.bind(cliPart4);
 
 // Iniciar el bot
 console.log('Iniciando Tennis Bot - Especialista en Piso Duro...\n');
