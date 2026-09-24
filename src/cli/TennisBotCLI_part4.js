@@ -42,7 +42,8 @@ class TennisBotCLI_Part4 {
     console.log('1. Actualizar desde archivos locales');
     console.log('2. Cargar datos de ejemplo');
     console.log('3. Guardar datos en archivos');
-    console.log('4. Volver al menu principal');
+    console.log('4. Descargar partidos reales de Internet (ESPN)');
+    console.log('5. Volver al menu principal');
     
     this.cli.prompt('Selecciona una opcion: ', (input) => {
       const normalizedInput = input.trim().toLowerCase();
@@ -57,13 +58,56 @@ class TennisBotCLI_Part4 {
         case '3': case 'guardar': case 'save':
           this.saveData();
           break;
-        case '4': case 'volver': case 'back':
+        case '4': case 'internet': case 'espn':
+          this.updateFromInternet();
+          break;
+        case '5': case 'volver': case 'back':
           this.cli.showMainMenu();
           break;
         default:
           console.log('Opcion no valida.');
           this.updateData();
       }
+    });
+  }
+  
+  updateFromInternet() {
+    console.log('\nDescarga partidos ATP reales desde ESPN (sin API key).');
+    console.log('Puedes indicar una fecha (formato AAAAMMDD) o dejar vacio para hoy.\n');
+    
+    this.cli.prompt('Fecha (Enter = hoy, ej: 20251001): ', (dateInput) => {
+      const trimmed = dateInput.trim();
+      
+      if (trimmed && !/^\d{8}$/.test(trimmed)) {
+        console.log('Fecha no valida. Usa el formato AAAAMMDD (ej: 20251001) o deja vacio para hoy.');
+        this.cli.prompt('Presiona Enter para volver...', () => {
+          this.updateData();
+        });
+        return;
+      }
+      
+      const dateStr = trimmed ? trimmed : null;
+      console.log('Descargando datos, espera un momento...');
+      
+      this.cli.dataUpdater.updateFromEspn(dateStr).then(result => {
+        if (result && result.success) {
+          console.log('\nActualizacion completada:');
+          console.log(`   Torneos: ${result.tournaments}`);
+          console.log(`   Partidos: ${result.matches}`);
+          console.log(`   Jugadores nuevos: ${result.newPlayers}`);
+          console.log('Los datos quedaron guardados en data/');
+        } else {
+          console.log('No se pudieron descargar los datos. Revisa tu conexion a Internet.');
+        }
+        this.cli.prompt('Presiona Enter para volver...', () => {
+          this.updateData();
+        });
+      }).catch(error => {
+        console.log('Error: ' + error.message);
+        this.cli.prompt('Presiona Enter para volver...', () => {
+          this.updateData();
+        });
+      });
     });
   }
   

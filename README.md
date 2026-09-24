@@ -203,12 +203,26 @@ Muestra estadísticas generales:
 1. Actualizar desde archivos locales
 2. Cargar datos de ejemplo
 3. Guardar datos en archivos
-4. Volver al menú principal
+4. Descargar partidos reales de Internet (ESPN)
+5. Volver al menú principal
 ```
 
 - **Archivos locales**: Carga datos desde archivos JSON
 - **Datos de ejemplo**: Carga jugadores y partidos de ejemplo para pruebas
 - **Guardar datos**: Exporta todos los datos a archivos JSON
+- **Descargar de Internet**: Descarga partidos ATP reales del día (o de una fecha AAAAMMDD) desde la API pública de ESPN, sin API key. Los datos se guardan automáticamente en `data/` y puedes analizarlos con el menú de análisis.
+
+## Actualización desde Internet (como la "fecha FIFA")
+
+El bot puede cargar partidos y resultados reales desde Internet, sin necesidad de API keys:
+
+1. En el menú principal elige `6` (Actualizar datos)
+2. Elige `4` (Descargar partidos reales de Internet)
+3. Deja vacío para hoy, o escribe una fecha en formato `AAAAMMDD` (ej: `20251001`)
+4. El bot descarga el calendario ATP completo de ese día (Shanghai Masters, China Open, Tokio, etc.)
+5. Ve a `2` (Partidos) → `3` (Partidos futuros) para ver y analizar los partidos descargados
+
+Los jugadores nuevos se crean automáticamente y los resultados de partidos completados actualizan el historial. Todo queda guardado en `data/` para uso offline.
 
 ### 7. Configuración
 

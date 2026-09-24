@@ -137,6 +137,117 @@ class DataUpdater {
   }
   
   /**
+   * Actualiza partidos reales desde la API pública de ESPN (sin API key)
+   * Descarga el calendario ATP para una fecha (YYYYMMDD) o para hoy
+   */
+  async updateFromEspn(dateStr) {
+    const baseUrl = 'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard';
+    const date = dateStr || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const url = `${baseUrl}?dates=${date}&bucket=1`;
+
+    console.log(`Descargando partidos ATP de ESPN para ${date}...`);
+
+    let events;
+    try {
+      const response = await axios.get(url, { timeout: 15000 });
+      events = response.data.events || [];
+    } catch (error) {
+      console.error('Error al conectar con ESPN:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    if (events.length === 0) {
+      console.log('No hay partidos ATP programados para esa fecha.');
+      return { success: true, tournaments: 0, matches: 0, newPlayers: 0 };
+    }
+
+    let matchCount = 0;
+    let newPlayerCount = 0;
+
+    for (const event of events) {
+      const tournamentName = event.name || 'Torneo ATP';
+
+      for (const grouping of event.groupings || []) {
+        for (const competition of grouping.competitions || []) {
+          const competitors = competition.competitors || [];
+          if (competitors.length !== 2) continue;
+
+          const isCompleted = competition.status && competition.status.type && competition.status.type.completed;
+
+          const playersData = competitors.map(c => ({
+            id: `espn_${c.id}`,
+            name: c.athlete ? c.athlete.fullName : 'Desconocido',
+            country: c.athlete && c.athlete.flag ? c.athlete.flag.alt : null,
+            ranking: null
+          }));
+
+          const players = playersData.map(pd => {
+            let player = this.analyzer.getPlayer(pd.id);
+            if (!player) {
+              const existing = this.analyzer.getAllPlayers().find(p =>
+                p.name.toLowerCase() === pd.name.toLowerCase()
+              );
+              if (existing) {
+                player = existing;
+              } else {
+                player = this.analyzer.addPlayer(pd);
+                newPlayerCount++;
+              }
+            }
+            return player;
+          });
+
+          const matchData = {
+            id: `espn_${competition.id}`,
+            tournament: tournamentName,
+            round: competition.round ? competition.round.displayName : 'R1',
+            surface: SURFACES.HARD,
+            date: competition.date || new Date().toISOString(),
+            status: isCompleted ? 'completed' : 'upcoming',
+            player1Id: players[0].id,
+            player2Id: players[1].id
+          };
+
+          if (isCompleted) {
+            const winnerIndex = competitors.findIndex(c => c.winner === true);
+            matchData.result = {
+              winner: winnerIndex === 0 ? 'player1' : 'player2'
+            };
+
+            if (competitors[0].linescores && competitors[1].linescores) {
+              matchData.score = {
+                sets: competitors[0].linescores.map((ls, i) => ({
+                  gamesP1: ls.value,
+                  gamesP2: competitors[1].linescores[i] ? competitors[1].linescores[i].value : 0
+                }))
+              };
+            }
+          }
+
+          const existingMatch = this.analyzer.getMatch(matchData.id);
+          if (!existingMatch) {
+            const match = this.analyzer.addMatch(matchData);
+            match.setPlayers(players[0], players[1]);
+            matchCount++;
+          } else {
+            existingMatch.status = matchData.status;
+            if (matchData.result) existingMatch.setResult(matchData.result);
+            if (matchData.score) existingMatch.setScore(matchData.score);
+            matchCount++;
+          }
+        }
+      }
+    }
+
+    console.log(`Descargados ${matchCount} partidos de ${events.length} torneo(s), ${newPlayerCount} jugadores nuevos`);
+
+    this.saveToLocalFiles();
+
+    this.lastUpdate = new Date().toISOString();
+    return { success: true, tournaments: events.length, matches: matchCount, newPlayers: newPlayerCount };
+  }
+
+  /**
    * Actualiza desde APIs externas
    */
   async updateFromApis() {
