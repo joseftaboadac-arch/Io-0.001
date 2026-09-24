@@ -224,6 +224,19 @@ El bot puede cargar partidos y resultados reales desde Internet, sin necesidad d
 
 Los jugadores nuevos se crean automáticamente y los resultados de partidos completados actualizan el historial. Todo queda guardado en `data/` para uso offline.
 
+### Modo automático
+
+Si no quieres pasar por el menú, arranca el bot con:
+
+```bash
+npm run hoy
+```
+
+Esto descarga los partidos del día automáticamente al arrancar (carga primero los datos guardados y luego actualiza desde ESPN) y te deja directo en el menú principal, listo para analizar.
+
+- `npm start` → abre el bot sin descargar (usar datos guardados)
+- `npm run hoy` → abre el bot descargando los partidos reales del día
+
 ### 7. Configuración
 
 ```
