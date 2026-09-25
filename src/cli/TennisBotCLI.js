@@ -310,3 +310,5 @@ class TennisBotCLI {
     });
   }
 }
+
+module.exports = TennisBotCLI;
