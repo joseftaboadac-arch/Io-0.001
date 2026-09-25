@@ -61,8 +61,8 @@ cli.exit = cliPart4.exit.bind(cliPart4);
 // Iniciar el bot
 console.log('Iniciando Tennis Bot - Especialista en Piso Duro...\n');
 
-// Cargar datos de ejemplo al inicio (opcional)
-// dataUpdater.createSampleData();
-
-// Iniciar la interfaz CLI
-cli.start();
+// Cargar datos guardados al inicio (data/players.json, data/matches.json, data/bets.json)
+dataUpdater.updateFromLocalFiles().then(() => {
+  // Iniciar la interfaz CLI
+  cli.start();
+});
