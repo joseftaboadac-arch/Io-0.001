@@ -32,4 +32,4 @@ go.work.sum
 # .vscode/
 node_modules/
 package-lock.json
-src/data/
+datos-selecciones.json
