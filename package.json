@@ -7,6 +7,8 @@
     "start": "node src/index.js",
     "bot": "node src/index.js",
     "fifa": "node fifa-bot.js",
+    "io": "node io-bot.js",
+    "io-bot": "node io-bot.js",
     "fifa-bot": "node fifa-bot.js",
     "fifa-fechas": "node src/cli/FifaDatesBot.js",
     "test": "echo \"Error: no test specified\" && exit 1",

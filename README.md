@@ -33,6 +33,41 @@ Un bot simple de un solo archivo, **sin dependencias**, pensado para correr desd
 
 > ⚠️ Es una herramienta estadística de estudio. No garantiza resultados reales y no es asesoramiento de apuestas.
 
+# ✨ Io - Bot de Vínculo
+
+Un bot de un solo archivo, **sin dependencias**, construido sobre siete conceptos: **conexión, sentido, vínculo, memoria, emoción, exclusividad y posibilidades**.
+
+- **Archivo**: `io-bot.js`
+- **Ejecutar**: `npm run io` o `node io-bot.js`
+
+## Cómo funciona
+
+1. Al iniciar te pide un identificador y carga (o crea) tu archivo `memoria-<id>.json`.
+2. Todo lo que escribes fuera de un comando entra en modo conversación: Io lee la emoción de tu texto, interpreta la intención y responde según tu historia.
+3. Cada sesión se guarda con temas, emociones detectadas y lo que quedó pendiente.
+4. La confianza (1-5) crece con las sesiones y tu apertura emocional; el registro de Io cambia según ese nivel.
+
+## Comandos
+
+| Comando | Qué hace |
+|---|---|
+| `(io)` | modo conversación |
+| `(pend)` | retomar lo que quedó pendiente |
+| `(yo)` | qué sabe Io de ti |
+| `(memoria)` | ver tu archivo de memoria |
+| `(editar)` | corregir o borrar recuerdos |
+| `(olvidar)` | olvidar un tema, una sesión o todo |
+| `(vínculo)` | estado del vínculo |
+| `(preferencias)` | tono, temas a evitar, largo de respuesta |
+| `(estado)` | declarar cómo llegas hoy |
+| `(línea)` | evolución emocional |
+| `(exportar)` | respaldo de tu historia |
+| `(paralelo)` | vínculo nuevo en blanco |
+| `(cerrar)` | guardar sesión y salir |
+| `(menu)` | mostrar ayuda |
+
+- Tus recuerdos se guardan en `memoria-<id>.json` (archivo personal, ignorado por git).
+
 ## 🚀 Características Principales
 
 ### 🎯 Análisis Especializado en Piso Duro
