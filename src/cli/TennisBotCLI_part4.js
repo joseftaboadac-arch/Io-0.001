@@ -42,7 +42,8 @@ class TennisBotCLI_Part4 {
     console.log('1. Actualizar desde archivos locales');
     console.log('2. Cargar datos de ejemplo');
     console.log('3. Guardar datos en archivos');
-    console.log('4. Volver al menu principal');
+    console.log('4. Partidos de hoy (ESPN)');
+    console.log('5. Volver al menu principal');
     
     this.cli.prompt('Selecciona una opcion: ', (input) => {
       const normalizedInput = input.trim().toLowerCase();
@@ -57,7 +58,10 @@ class TennisBotCLI_Part4 {
         case '3': case 'guardar': case 'save':
           this.saveData();
           break;
-        case '4': case 'volver': case 'back':
+        case '4': case 'hoy': case 'espn': case 'partidos':
+          this.showTodayMatches();
+          break;
+        case '5': case 'volver': case 'back':
           this.cli.showMainMenu();
           break;
         default:
@@ -67,6 +71,61 @@ class TennisBotCLI_Part4 {
     });
   }
   
+
+  showTodayMatches() {
+    this.cli.prompt('Filtrar por ciudad o torneo (ej. Tokio, vacio para todos): ', (filtro) => {
+      const aliases = { 'tokio': 'tokyo', 'moscu': 'moscow', 'pekin': 'beijing', 'shangai': 'shanghai', 'nueva york': 'new york', 'los angeles': 'los angeles', 'paris': 'paris', 'roma': 'rome', 'madrid': 'madrid', 'viena': 'vienna', 'basilea': 'basel', 'tokyo': 'tokyo' };
+      const fRaw = filtro.trim();
+      const f = aliases[fRaw.toLowerCase()] || fRaw;
+      console.log('\nDescargando partidos del dia desde ESPN...\n');
+      const tours = ['atp', 'wta'];
+      const promesas = tours.map(t =>
+        fetch('https://site.api.espn.com/apis/site/v2/sports/tennis/' + t + '/scoreboard')
+          .then(r => r.json())
+          .then(j => {
+            const partidos = [];
+            (j.events || []).forEach(e => {
+              const nombre = e.name || '';
+              (e.groupings || []).forEach(g => {
+                (g.competitions || []).forEach(c => {
+                  const comps = c.competitors || [];
+                  const p1 = comps[0] && comps[0].athlete ? comps[0].athlete.displayName : '?';
+                  const p2 = comps[1] && comps[1].athlete ? comps[1].athlete.displayName : '?';
+                  const estado = c.status && c.status.type ? c.status.type.detail : '';
+                  const hora = c.date ? c.date.slice(11, 16) + ' UTC' : '';
+                  const sede = (c.venue && c.venue.fullName) || '';
+                  const ronda = (c.round && c.round.displayName) || '';
+                  const marcador = comps.map(x => (x.linescores || []).map(l => String(l.value)).join('-')).join(' / ');
+                  partidos.push({ torneo: nombre, sede, ronda, estado, hora, marcador, p1, p2 });
+                });
+              });
+            });
+            return partidos;
+          })
+      );
+      Promise.all(promesas).then(resultados => {
+        const todos = [].concat(...resultados);
+        const lista = f ? todos.filter(x => (x.sede + ' ' + x.torneo).toLowerCase().includes(f.toLowerCase())) : todos;
+        if (lista.length === 0) {
+          console.log(f ? 'No hay partidos de hoy que coincidan con: ' + f : 'No hay partidos hoy.');
+        } else {
+          lista.forEach(x => {
+            console.log('Torneo: ' + x.torneo);
+            console.log('  ' + x.p1 + ' vs ' + x.p2);
+            console.log('  Lugar: ' + x.sede + ' | Ronda: ' + x.ronda + ' | Hora: ' + x.hora + ' | ' + x.estado);
+            if (x.marcador && x.marcador !== ' / ') console.log('  Sets: ' + x.marcador);
+            console.log('');
+          });
+          console.log('Total: ' + lista.length + ' partidos');
+        }
+        this.cli.prompt('Presiona Enter para volver...', () => { this.updateData(); });
+      }).catch(error => {
+        console.log('Error al conectar con ESPN: ' + error.message);
+        this.cli.prompt('Presiona Enter para volver...', () => { this.updateData(); });
+      });
+    });
+  }
+
   updateFromLocalFiles() {
     console.log('Actualizando desde archivos locales...');
     
