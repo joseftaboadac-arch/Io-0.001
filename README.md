@@ -8,7 +8,7 @@ Este es un sistema completo para analizar y gestionar apuestas de tenis con enfo
 
 Un bot simple de un solo archivo, **sin dependencias**, pensado para correr desde el celular (Termux) con Node.js.
 
-- **Archivo**: `fifa-bot.js`
+- **Archivo**: entrada `fifa-bot.js` + logica modular en `src/fifa/` (`data.js` datos, `espn.js` API de ESPN con reintentos y cache, `prediccion.js` modelo Poisson, `cli.js` menu)
 - **Ejecutar**: `npm run fifa` o `node fifa-bot.js`
 
 ## Qué predice para cada partido
@@ -29,6 +29,7 @@ Un bot simple de un solo archivo, **sin dependencias**, pensado para correr desd
 - Viene precargado con la **fecha FIFA del 24 de septiembre al 6 de octubre de 2026** (UEFA Nations League 2026/27 + amistosos).
 - Puedes agregar partidos nuevos (por ejemplo, la ventana de noviembre 2026) desde el menú.
 - **Actualizar desde ESPN** (opción 7): descarga partidos y estadísticas reales de la fecha FIFA desde la API pública de ESPN (sin clave ni registro). Sustituye la lista de partidos por la oficial y recalcula los promedios de cada selección con los resultados reales (goles, amarillas, córners, offsides).
+- La API de ESPN se consulta con reintentos automáticos y caché en memoria para agilizar la sesión.
 - **Analizar partidos de mañana** (opción 10): descarga los partidos del día siguiente (o de la fecha que elijas) desde ESPN y muestra en un solo informe la predicción de todos: goles esperados, 1X2, over 2.5, ambos marcan, marcador más probable y recomendación.
 - Tus cambios se guardan en `datos-selecciones.json` (archivo personal, ignorado por git).
 
