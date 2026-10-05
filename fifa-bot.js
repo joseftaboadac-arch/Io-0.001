@@ -301,6 +301,95 @@ function actualizarPromediosConResultado(equipo, stats) {
   e.offsides = ((e.offsides * (partidas - 1)) + stats.offsides) / partidas;
 }
 
+function fechaDeManana() {
+  const manana = new Date();
+  manana.setUTCDate(manana.getUTCDate() + 1);
+  return manana.toISOString().slice(0, 10);
+}
+
+function informeCompacto(local, visitante, pred, competencia) {
+  const resultados = [
+    { texto: '1', prob: pred.pLocal },
+    { texto: 'X', prob: pred.pEmpate },
+    { texto: '2', prob: pred.pVisitante }
+  ].sort((a, b) => b.prob - a.prob);
+  const favorito = resultados[0].prob >= 0.55
+    ? 'favorito ' + resultados[0].texto + ' (' + pct(resultados[0].prob) + ')'
+    : 'partido parejo, mejor doble oportunidad';
+  let consejos = [];
+  if (pred.over25 >= 0.55) consejos.push('over 2.5');
+  else if (pred.over25 <= 0.40) consejos.push('under 2.5');
+  if (pred.btts >= 0.55) consejos.push('ambos marcan');
+  console.log('  ' + competencia + ' | ' + local + ' vs ' + visitante);
+  console.log('    Goles esperados: ' + num(pred.golesLocal) + ' - ' + num(pred.golesVisitante) +
+    ' | 1X2: ' + pct(pred.pLocal) + ' / ' + pct(pred.pEmpate) + ' / ' + pct(pred.pVisitante));
+  console.log('    Over 2.5: ' + pct(pred.over25) + ' | BTTS: ' + pct(pred.btts) +
+    ' | Marcador mas probable: ' + pred.topMarcadores[0].marcador + ' (' + pct(pred.topMarcadores[0].probabilidad) + ')');
+  console.log('    Recomendacion: ' + favorito + (consejos.length > 0 ? ' | ' + consejos.join(' + ') : ''));
+}
+
+async function analizarPartidosDeManana() {
+  console.log('\n=== ANALISIS DE LOS PARTIDOS DE MANANA ===');
+  console.log('Descarga los partidos de la fecha de manana desde la API publica de ESPN');
+  console.log('y genera la prediccion de cada uno. Necesita internet.\n');
+
+  const respuesta = await preguntar('Fecha a analizar (AAAA-MM-DD, Enter = manana): ');
+  let fecha;
+  if (respuesta === '') {
+    fecha = fechaDeManana();
+  } else {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(respuesta)) {
+      console.log('Fecha invalida. Usa el formato AAAA-MM-DD.');
+      return;
+    }
+    fecha = respuesta;
+  }
+
+  console.log('Descargando partidos del ' + fecha + '...');
+  let descargados;
+  try {
+    descargados = await descargarPartidosFecha(fecha, fecha);
+  } catch (e) {
+    console.log('Error de conexion: ' + e.message);
+    console.log('Verifica que tengas internet e intenta de nuevo.');
+    return;
+  }
+
+  if (descargados.length === 0) {
+    console.log('No se encontraron partidos de selecciones para el ' + fecha + '.');
+    return;
+  }
+
+  const porJugar = descargados.filter((p) => p.estado !== 'post');
+  const lista = porJugar.length > 0 ? porJugar : descargados;
+  if (porJugar.length === 0) {
+    console.log('Todos los partidos de esa fecha ya finalizaron; se muestra el analisis previo.');
+  }
+
+  console.log('\nPartidos a analizar: ' + lista.length + '\n');
+  const codigoPorEtiqueta = {};
+  COMPETENCIA_ESPN.forEach(([codigo, etiqueta]) => { codigoPorEtiqueta[etiqueta] = codigo; });
+  let analizadas = 0;
+  for (const p of lista) {
+    const nombreLocal = asegurarEquipo(p.local);
+    const nombreVisitante = asegurarEquipo(p.visitante);
+    const local = equipos[nombreLocal];
+    const visitante = equipos[nombreVisitante];
+    if (!local || !visitante) {
+      console.log('  ' + p.competencia + ' | ' + p.local + ' vs ' + p.visitante);
+      console.log('    Sin estadisticas para uno de los equipos; agrega el partido con la opcion 6');
+      console.log('    y edita sus estadisticas en la opcion 5 para poder predecirlo.');
+      continue;
+    }
+    informeCompacto(nombreLocal, nombreVisitante, predecir(local, visitante), p.competencia);
+    analizadas++;
+  }
+
+  guardarDatos();
+  console.log('\nResumen: ' + analizadas + ' de ' + lista.length + ' partidos analizados.');
+  console.log('(Prediccion estadistica. No garantiza resultados reales.)');
+}
+
 async function recalcularDesdeEspn() {
   console.log('\n=== RECALCULAR EQUIPO CON DATOS REALES ===');
   console.log('Descarga los ultimos 10 partidos reales del equipo desde ESPN');
@@ -743,6 +832,9 @@ function mostrarAyuda() {
   console.log('     de cada seleccion con los resultados reales de los partidos jugados.');
   console.log('  8. Esto es una herramienta estadistica de estudio: no garantiza');
   console.log('     resultados y no es asesoramiento de apuestas.');
+  console.log('  9. Analizar partidos de manana: descarga del dia siguiente (o de la');
+  console.log('     fecha que elijas) los partidos reales desde ESPN y muestra la');
+  console.log('     prediccion de todos de una sola vez.');
 }
 
 function mostrarMenu() {
@@ -758,6 +850,7 @@ function mostrarMenu() {
   console.log('7. Actualizar desde ESPN (internet)');
   console.log('8. Recalcular un equipo con datos reales');
   console.log('9. Ayuda / como funciona');
+  console.log('10. Analizar partidos de manana (internet)');
   console.log('0. Salir');
 }
 
@@ -771,6 +864,7 @@ const ACCIONES = {
   '7': actualizarDesdeEspn,
   '8': recalcularDesdeEspn,
   '9': mostrarAyuda,
+  '10': analizarPartidosDeManana,
   '0': null
 };
 
@@ -778,7 +872,7 @@ async function ejecutarOpcion(opcion) {
   if (opcion === '0') return true;
   const accion = ACCIONES[opcion];
   if (!accion) {
-    console.log('Opcion no valida. Escribe del 1 al 9, o 0 para salir.');
+    console.log('Opcion no valida. Escribe del 1 al 10, o 0 para salir.');
     return false;
   }
   await accion();
