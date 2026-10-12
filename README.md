@@ -1,3 +1,11 @@
+# Io-0.001 - Bots de Análisis y Trading
+
+Este repositorio agrupa varios bots independientes:
+
+- **Tenis**: especialista en apuestas de tenis en piso duro (ver abajo)
+- **FIFA**: bot de predicciones para fechas FIFA (`npm run fifa`)
+- **MetaTrader 5**: robot de trading algorítmico `IoTrendRobot` en [`mt5/`](mt5/README.md) - Expert Advisor MQL5 con estrategia de tendencia (EMA + ADX + RSI, SL/TP por ATR, riesgo 1%)
+
 # Tennis Bot - Especialista en Piso Duro
 
 🎾 **Bot de apuestas de tenis especializado en superficie de piso duro**
