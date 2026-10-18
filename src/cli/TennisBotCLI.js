@@ -15,6 +15,18 @@ class TennisBotCLI {
     this.currentMatch = null;
   }
   
+  prompt(message, callback) {
+    if (!this.rl) {
+      this.rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+    }
+    this.rl.question(message, (input) => {
+      callback(input);
+    });
+  }
+
   start() {
     console.log('\n=== TENNIS BOT - Especialista en Piso Duro ===\n');
     console.log('Bienvenido al sistema de apuestas de tenis especializado en piso duro');
@@ -310,3 +322,5 @@ class TennisBotCLI {
     });
   }
 }
+
+module.exports = TennisBotCLI;
