@@ -309,4 +309,23 @@ class TennisBotCLI {
       }
     });
   }
+
+  prompt(question, callback) {
+    if (!this.rl) {
+      this.start();
+      return;
+    }
+
+    this.rl.setPrompt(question);
+    this.rl.prompt();
+
+    const listener = (input) => {
+      this.rl.removeListener('line', listener);
+      callback(input);
+    };
+
+    this.rl.on('line', listener);
+  }
 }
+
+module.exports = TennisBotCLI;
