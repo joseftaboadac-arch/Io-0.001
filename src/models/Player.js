@@ -1,5 +1,16 @@
 const { SURFACES, STAT_CATEGORIES } = require('../config/constants');
 
+const EMPTY_SURFACE_STATS = {
+  matchesPlayed: 0,
+  matchesWon: 0,
+  winRate: 0,
+  [STAT_CATEGORIES.FIRST_SERVE_PERCENTAGE]: 0,
+  [STAT_CATEGORIES.SERVICE_POINTS_WON]: 0,
+  [STAT_CATEGORIES.RETURN_POINTS_WON]: 0,
+  [STAT_CATEGORIES.BREAK_POINTS_CONVERTED]: 0,
+  titles: 0
+};
+
 /**
  * Clase que representa un jugador de tenis
  * Contiene toda la información relevante para análisis de apuestas
@@ -169,7 +180,7 @@ class Player {
    * Obtiene estadísticas para una superficie específica
    */
   getSurfaceStats(surface) {
-    return this.surfaceStats[surface] || this.initializeSurfaceStats()[surface];
+    return this.surfaceStats[surface] || EMPTY_SURFACE_STATS;
   }
   
   /**
